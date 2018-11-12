@@ -8,3 +8,8 @@ Combining reinforcement learning and finite element analysis
   In reinforcement learning terms, the finite element model represents an environment to which you apply actions. An action, in this case, is altering parameters of cross-sectional area and Young's modulus in a certain way. If an action leads to alleviation of displacements, measured by FEA, the RL part of the model gets a reward.
 
   RL model uses neural network policy gradient algorithm. The algorithm optimizes the parameters of a policy by following the gradients toward higher rewards. The end result of the modeling is an optimal cross-sectional area and Young's modulus that preserve displacements within acceptable limits.
+
+
+## 2. Design of pin-jointed frame structure by reinforcement learning:
+  
+  Main idea of the model is to optimize the position of middle element by allowing its movement along horizontal axis in order to minimize displacements in the structure.
