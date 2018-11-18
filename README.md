@@ -12,4 +12,9 @@ Combining reinforcement learning and finite element analysis
 
 ## 2. Design of pin-jointed frame structure by reinforcement learning:
   
-  Main idea of the model is to optimize the position of joints in order to minimize displacements in the structure.
+  Main idea of the model is to optimize positions of joints in order to minimize displacements in the structure.
+
+
+## 3. Design of a bridge by reinforcement learning
+
+  RL optimizes positions of joints in order to minimize y-displacement in middle node of the bridge like structure.
