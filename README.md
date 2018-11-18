@@ -1,4 +1,4 @@
-# Reinforcement_Learning_and_FEA
+# Reinforcement Learning and Finite Element Analysis
 Combining reinforcement learning and finite element analysis
 
 ## 1. Simple finite element analysis optimized by reinforcement learning: 
