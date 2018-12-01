@@ -14,3 +14,8 @@ Models in repository aim to optimize design of a structure via combining finite 
 ## 3. Design of a bridge by reinforcement learning
 
   The model optimizes positions of joints in order to minimize vertical displacement in middle node of the bridge like 2D truss structure. The agent gets a reward if the middle node displacement is reduced due to change in position of truss joints. At the end of notebook one can see the final design of the “bridge” produced by AI. V.03 of the notebook is stable and does NOT have any memory leaks.
+
+
+## 4. Spool design by plane frame element and reinforcement learning
+
+  This model optimizes geometry in order to minimize maximum displacement in a “spool”. The agent gets a reward if the maximum nodal displacement is reduced due to change in the spool geometry. The FE model uses a plane frame element.
