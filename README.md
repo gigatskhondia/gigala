@@ -16,3 +16,7 @@ For more information see the manual.
 ## 3. Spool design by plane frame element and reinforcement learning
 
   This model optimizes geometry in order to minimize maximum displacement in a “spool”. The agent gets a reward if the maximum nodal displacement is reduced due to change in the spool geometry. The FE model uses a plane frame element.
+
+## 4. Generative design of bionic partition for airplane cabin interiors by reinforcement learning and finite element analysis
+
+  The model optimizes geometry in order to maximize strength and “minimize” weight of bionic partition.
