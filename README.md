@@ -19,4 +19,4 @@ For more information see the manual.
 
 ## 4. Generative design of bionic partition for airplane cabin interiors by reinforcement learning and finite element analysis
 
-  The model optimizes geometry in order to maximize strength and “minimize” weight of bionic partition.
+  The model optimizes geometry in order to maximize strength and minimize weight of bionic partition.
