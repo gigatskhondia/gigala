@@ -4,3 +4,6 @@ This repository is an attempt to apply artificial intelligence algorithms for th
 Please see  [manuals](https://github.com/gigatskhondia/Engineering_Design_by_Artificial_Intelligence/tree/master/manuals) for the specifics of the models and algorithms I use.
 
 To keep up to date with the project please check [Gigala](https://www.facebook.com/GigaTsk) page.
+
+
+Currently working on *engineering design by human aided reinforcement learning*. 
