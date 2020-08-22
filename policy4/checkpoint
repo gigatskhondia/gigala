@@ -1,0 +1,2 @@
+model_checkpoint_path: "pinjointed4.ckpt"
+all_model_checkpoint_paths: "pinjointed4.ckpt"
