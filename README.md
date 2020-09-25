@@ -9,5 +9,5 @@ To keep up to date with the project please check [Gigala](https://www.facebook.c
 Currently working on *engineering design by human aided reinforcement learning*. 
 
 
-## Do you like the project? Star me on GitHub to support the project!
+#### Do you like the project? Star me to support it!
 
