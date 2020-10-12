@@ -12,7 +12,7 @@ To keep up to date with the project please check [Gigala](https://www.facebook.c
 </div>
 ```
 
-
+<p style='color:red'> Currently investigating whether any ideas from neural architecture search could be applied to mechanical parts domain design.</p>
 
 
  
