@@ -7,8 +7,10 @@ To keep up to date with the project please check [Gigala](https://www.facebook.c
 
  
  ```diff
-+ Currently studying if any neural architecture search ideas can be applied to mechanical parts domain design.
++ Currently investigating whether any ideas from neural architecture search can be applied to domain design 
++ of mechanical parts.
 ```
+ 
  
 ### Do you like the project? Star me to support it!
 
