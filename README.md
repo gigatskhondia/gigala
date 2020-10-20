@@ -6,11 +6,5 @@ Please see  [manuals](https://github.com/gigatskhondia/Engineering_Design_by_Art
 To keep up to date with the project please check [Gigala](https://www.facebook.com/GigaTsk) page.
 
  
- ```diff
-+ Currently investigating whether any ideas from neural architecture search could be applied 
-+ to domain design of mechanical parts.
-```
- 
- 
 ### Do you like the project? Star me to support it!
 
