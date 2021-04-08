@@ -1,5 +1,5 @@
 # Engineering Design by AI
-This repository is an attempt to apply artificial intelligence algorithms for the purpose of engineering design of e.g. structural elements like aircraft components or marine structures and construction procedures. More specifically I combine finite element analysis and reinforcement learning to produce optimal (in terms of strength and weight) structures and safe construction procedures.  
+This repository is an attempt to apply artificial intelligence algorithms for the purpose of engineering design of e.g. structural elements like aircraft components or marine structures, and of construction procedures. More specifically I combine finite element analysis and reinforcement learning to produce optimal (in terms of strength and weight) structures and safe construction procedures.  
 
 Please see  [manuals](https://github.com/gigatskhondia/Engineering_Design_by_Artificial_Intelligence/tree/master/design_by_reinforcement_learning_and_finite_element_analysis/manuals) for the specifics of the models and algorithms I use.
 
