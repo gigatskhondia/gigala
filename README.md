@@ -5,7 +5,7 @@ Please see  [manuals](https://github.com/gigatskhondia/Engineering_Design_by_Art
 
 Mentions on social media:
 * [Engineering Design by Reinforcement Learning and Finite Element Methods.](https://gigatskhondia.medium.com/engineering-design-by-reinforcement-learning-and-finite-element-methods-82eb57796424)
-* [Using reinforcement learning in marine construction and sustainable energy development.](https://gigatskhondia.medium.com/using-reinforcement-learning-in-marine-construction-and-sustainable-energy-development-b5f301fb2397)
+* [Some ideas on using reinforcement learning in marine construction and sustainable energy development.](https://gigatskhondia.medium.com/using-reinforcement-learning-in-marine-construction-and-sustainable-energy-development-b5f301fb2397)
 
 To keep up to date with the project please check [Gigala](https://www.facebook.com/GigaTsk) page.
 
