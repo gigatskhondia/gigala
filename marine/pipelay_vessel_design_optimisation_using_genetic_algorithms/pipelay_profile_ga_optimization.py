@@ -29,7 +29,7 @@ BOUNDS_HIGH = [5, 150, 250, 15, 20, 20, 10, 250, 80]
 NUM_OF_PARAMS = len(BOUNDS_HIGH)
 
 # Genetic Algorithm constants:
-POPULATION_SIZE = 200
+POPULATION_SIZE = 250
 P_CROSSOVER = 0.9  # probability for crossover
 P_MUTATION = 0.5   # probability for mutating an individual
 MAX_GENERATIONS = 50
@@ -115,7 +115,7 @@ def piplayStatic(individual):
                                                           mu_roller,
                                                           thetaPT, LFL, RB, ELPT, LPT, ELWL, LMP, RS, CL)
     if numpy.isnan(Ttens_tonnef):
-        Ttens_tonnef = 100
+        Ttens_tonnef = 50
 
     if TTS_ratio > 0.6 or TTS_ratio < 0.3 or TopS_ratio > 0.9:
         return Ttens_tonnef*PENALTY_VALUE,
