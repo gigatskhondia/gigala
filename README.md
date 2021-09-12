@@ -8,7 +8,7 @@ Mentions on social media:
 * [Some ideas on using reinforcement learning in marine construction and sustainable energy development.](https://gigatskhondia.medium.com/using-reinforcement-learning-in-marine-construction-and-sustainable-energy-development-b5f301fb2397)
 * [Pipelay vessel design optimisation using genetic algorithms.](https://gigatskhondia.medium.com/pipelay-vessel-design-optimisation-using-genetic-algorithms-506aa04212f1)
 
-To keep up to date with the project please check [Gigala](https://www.facebook.com/GigaTsk) page.
+To keep up to date with the project please check [Gigala](https://www.facebook.com/GigaTsk) and [Ocean Intella](https://www.facebook.com/ocean.intella) pages.
 
  
 ### Do you like the project? Star me to support it!
