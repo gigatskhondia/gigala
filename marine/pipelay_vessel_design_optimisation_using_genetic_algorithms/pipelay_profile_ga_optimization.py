@@ -144,7 +144,6 @@ toolbox.register("mutate",
 # Genetic Algorithm flow:
 def main():
 
-
     # create initial population (generation 0):
     population = toolbox.populationCreator(n=POPULATION_SIZE)
 
