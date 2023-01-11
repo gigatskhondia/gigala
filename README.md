@@ -1,5 +1,5 @@
 # Engineering Design by Artificial Intelligence
-This repository is an attempt to apply artificial intelligence algorithms for the purpose of engineering design (of structural elements like aircraft components, marine engineering, etc). More specifically I combine numerical simulation  (like finite element analysis) with artificial intelligence methods (like reinforcement learning and genetic algorithms) to produce optimal design.  
+This repository is an attempt to apply artificial intelligence algorithms for the purpose of engineering design (of structural elements like aircraft components, marine engineering, etc). More specifically I combine numerical simulation  (like finite element analysis) with artificial intelligence (like reinforcement learning and genetic algorithms) to produce optimal design.  
 
 Please see  [manuals](https://github.com/gigatskhondia/gigala/tree/master/examples/design_by_reinforcement_learning_and_finite_element_analysis/manuals) for the specifics of the models and algorithms I use.
 
