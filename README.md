@@ -8,7 +8,7 @@ For more recent approaches, please see mentions on social media:
 * [Engineering Design by Reinforcement Learning and Finite Element Methods.](https://gigatskhondia.medium.com/engineering-design-by-reinforcement-learning-and-finite-element-methods-82eb57796424)
 * [Some ideas on using reinforcement learning in marine construction and sustainable energy development.](https://gigatskhondia.medium.com/using-reinforcement-learning-in-marine-construction-and-sustainable-energy-development-b5f301fb2397)
 * [Engineering Design by Genetic Algorithms and Finite Element Methods.](https://gigatskhondia.medium.com/engineering-design-by-genetic-algorithms-and-finite-element-methods-5077ebadd16e)
-* [Modelling pipelay dynamics with second order ordinary differential equation using Python.](https://medium.com/@gigatskhondia/modelling-pipelay-dynamics-with-second-order-ordinary-differential-equation-using-python-4d6fc24055b)
+* [Modelling offshore pipelaying dynamics.](https://medium.com/@gigatskhondia/modelling-pipelay-dynamics-with-second-order-ordinary-differential-equation-using-python-4d6fc24055b)
 * [Pipelay vessel design optimisation using genetic algorithms.](https://medium.com/@gigatskhondia/pipelay-vessel-design-optimisation-using-genetic-algorithms-506aa04212f1)
 
 
