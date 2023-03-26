@@ -104,18 +104,18 @@ def static_pipe_lay(ODs,ts ,Es, SMYS,rho_s ,tFBE ,rhoFBE,tconc, rho_conc,
 
 if __name__ == "__main__":
     # Pipe data
-    ODs = 323.9  # Outer diameter of steel pipe, [mm]
-    ts = 14.2   # Wall thickness of steel pipe, [mm]
-    Es = 207  # Young's modulus of steel, [GPa]
+    ODs = 761  # Outer diameter of steel pipe, [mm]
+    ts = 761-690   # Wall thickness of steel pipe, [mm]
+    Es = 210  # Young's modulus of steel, [GPa]
     SMYS = 358  # SMYS for X52 steel, [MPa]
     rho_s = 7850   # Density of steel,[kg⋅m^−3]
-    tFBE = 0.5  # Thickness of FBE insulation layer, [mm]
+    tFBE = 0  # Thickness of FBE insulation layer, [mm]
     rhoFBE = 1300  # Density of FBE, [kg⋅m^−3]
-    tconc = 50   # Thickness of concrete coating,[mm]
+    tconc = 0   # Thickness of concrete coating,[mm]
     rho_conc = 2250   # Density of concrete,[kg⋅m^−3]
 
     # Environmental data
-    d = 50   # Water depth, [m]
+    d = 700   # Water depth, [m]
     rho_sea = 1025    # Density of seawater,[kg⋅m^−3]
 
     # Pipe Launch Rollers
