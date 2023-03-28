@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+title: Gigala
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Georgy
+    family-names: Tskhondiya
+    email: gigatskhondia@gmail.com
+    affiliation: Gigala
+identifiers:
+  - type: url
+    value: 'https://gigatskhondia.medium.com/'
+    description: Medium blog about my project's developments.
+repository-code: 'https://github.com/gigatskhondia/gigala'
+abstract: >-
+  Applying artificial intelligence algorithms for the
+  purpose of engineering design.
+keywords:
+  - Reinforcement learning
+  - Finite element methods
+  - Marine and structural engineering
+  - Design
+license: MIT
+date-released: '2018-10-13'
