@@ -4,6 +4,7 @@ This repository is an attempt to apply artificial intelligence algorithms for th
 Please see  [manuals](https://gigatskhondia.github.io/gigala/) for the specifics of the models and algorithms I used earlier.
 
 For more recent approaches, please see mentions on social media:
+* [Python and Finite Element Methods: A Match Made in Heaven?](https://gigatskhondia.medium.com/python-and-finite-element-methods-a-match-made-in-heaven-ee2ed7ca14ee)
 * [On artificial intelligence aided engineering design.](https://gigatskhondia.medium.com/on-artificial-intelligence-aided-engineering-design-a6cf6f76b3d9)
 * [Engineering Design by Reinforcement Learning and Finite Element Methods.](https://gigatskhondia.medium.com/engineering-design-by-reinforcement-learning-and-finite-element-methods-82eb57796424)
 * [Some ideas on using reinforcement learning in marine construction and sustainable energy development.](https://gigatskhondia.medium.com/using-reinforcement-learning-in-marine-construction-and-sustainable-energy-development-b5f301fb2397)
