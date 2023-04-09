@@ -38,6 +38,7 @@ def static_pipe_lay(ODs,ts ,Es, SMYS,rho_s ,tFBE ,rhoFBE,tconc, rho_conc,
     thetaWL=np.rad2deg(thetaWL)
 
     thetaLO = thetaMP + thetaS
+#     print(thetaLO)
     hLO = RS*(1 - np.cos(np.deg2rad(thetaLO))) - (ELos - ELWL)
     TLO = Wsub*(d - hLO)/( 1 - np.cos(np.deg2rad(thetaLO)))
     H = TLO - Wsub*(d - hLO)
