@@ -2,8 +2,6 @@
 This repository is an attempt to apply artificial intelligence algorithms for the purpose of engineering design (of structural elements like aircraft components, marine structures, etc). More specifically I combine numerical simulation  (like finite element analysis) with artificial intelligence (like reinforcement learning and genetic algorithms) to produce optimal designs. 
 
 Nowadays, my work has inclining towards the analysis of dynamics of offshore structures and topology optimization. My key motivation is an exploration on the different ways that artificial intelligence can be applied to science and engineering. My interests are very diverse and I am going to use this repository as a testbed for my ideas. So do not be surprised by the multiplicity of the areas I cover.
-
-**Contact me if you are interested in any of my solutions,  I can scale, tailor and optimize them to your project!**
  
 Please see  [manuals](https://gigatskhondia.github.io/gigala/) for the specifics of the models and algorithms I used earlier.
 
@@ -21,8 +19,9 @@ Schematic design of bionic partition:
 
 <img width="304" alt="Screenshot 2023-02-01 at 21 19 39" src="https://user-images.githubusercontent.com/31343916/216661713-34ff7766-0a4d-436d-979c-72053c2c45c8.png">
 
-
 To keep up to date with the project please check [Gigala](https://www.facebook.com/GigaTsk) page.
+
+**Contact me if you are interested in any of my solutions,  I can scale, tailor and optimize them to your project!**
 
 ### Do you like the project? Star me to support it!
 
