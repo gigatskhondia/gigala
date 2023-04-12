@@ -2,6 +2,8 @@
 This repository is an attempt to apply artificial intelligence algorithms for the purpose of engineering design (of structural elements like aircraft components, marine structures, etc). More specifically I combine numerical simulation  (like finite element analysis) with artificial intelligence (like reinforcement learning and genetic algorithms) to produce optimal designs. 
 
 Nowadays, my work has inclining towards the analysis of dynamics of offshore structures and topology optimization. My key motivation is an exploration on the different ways that artificial intelligence can be applied to science and engineering. My interests are very diverse and I am going to use this repository as a testbed for my ideas. So do not be surprised by the multiplicity of the areas I cover.
+
+**Contact me if you are interested in any of my solutions,  I can scale, tailor and optimize them to your project!**
  
 Please see  [manuals](https://gigatskhondia.github.io/gigala/) for the specifics of the models and algorithms I used earlier.
 
