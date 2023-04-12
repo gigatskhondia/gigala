@@ -1,11 +1,10 @@
 # Engineering Design by Artificial Intelligence
-This repository is an attempt to apply artificial intelligence algorithms for the purpose of engineering design (of structural elements like aircraft components, marine structures, etc). More specifically I combine numerical simulation  (like finite element analysis) with artificial intelligence (like reinforcement learning and genetic algorithms) to produce optimal designs. 
 
-Nowadays, my work has inclining towards the analysis of dynamics of offshore structures and topology optimization. My key motivation is an exploration on the different ways that artificial intelligence can be applied to science and engineering. My interests are very diverse and I am going to use this repository as a testbed for my ideas. So do not be surprised by the multiplicity of the areas I cover.
+Are you interested in engineering design and artificial intelligence? This repository is an attempt to apply AI algorithms for the purpose of engineering design of structural elements like aircraft components and marine structures. I combine numerical simulation like finite element analysis with artificial intelligence like reinforcement learning and genetic algorithms to produce optimal designs. My work has been focused on the analysis of dynamics of offshore structures and topology optimization. I am constantly exploring different ways that artificial intelligence can be applied to science and engineering. With my diverse interests, I am using this repository as a testbed for my ideas. I hope that my work can inspire you to explore the different ways that artificial intelligence can be applied to your field.
  
-Please see  [manuals](https://gigatskhondia.github.io/gigala/) for the specifics of the models and algorithms I used earlier.
 
-For more recent approaches, please see mentions on social media:
+Please check my blog and [manuals](https://gigatskhondia.github.io/gigala/) for the specifics of the models and algorithms I use:
+
 * [Python and Finite Element Methods: A Match Made in Heaven?](https://gigatskhondia.medium.com/python-and-finite-element-methods-a-match-made-in-heaven-ee2ed7ca14ee)
 * [On artificial intelligence aided engineering design.](https://gigatskhondia.medium.com/on-artificial-intelligence-aided-engineering-design-a6cf6f76b3d9)
 * [Engineering Design by Reinforcement Learning and Finite Element Methods.](https://gigatskhondia.medium.com/engineering-design-by-reinforcement-learning-and-finite-element-methods-82eb57796424)
