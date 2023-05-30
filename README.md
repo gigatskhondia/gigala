@@ -24,7 +24,7 @@ You will be able to feed an image to newer versions of chatGPT. Apparently you c
 
 <img width="568" alt="Screenshot 2023-05-16 at 11 37 50" src="https://github.com/gigatskhondia/gigala/assets/31343916/ef983d4e-e8f6-456e-80b9-d2fa95aba1d8">
 
-A different approach. To align chatGPT to human values, they have used a thing called Reinforcement Learning from Human Feedback (RLHF). Hence, I thought, what if to impose 'physics understanding' on chatGPT you need to align it via Reinforcement Learning from Partial Differential Equations Feedback (RLPDEF). For example you can prompt chatGPT to answer question about physical phenomenon while guiding it by RLPDEF. RLPDEF might be an MDP where the environment is represented by PDE of physical problem e.g. fluid flow.
+A different approach. To align chatGPT to human values, they have used a thing called Reinforcement Learning from Human Feedback (RLHF). Hence, I thought, what if to impose 'physics understanding' on chatGPT you need to align it via Reinforcement Learning from Partial Differential Equations Feedback (RLPDEF). For example you can prompt chatGPT to answer question about physical phenomenon while guiding it by RLPDEF. RLPDEF might be an MDP where the environment is represented by PDE of physical problem e.g. fluid flow or my RL automated design.
 
 To keep up to date with the project please check [Gigala](https://www.facebook.com/GigaTsk) page.
 
