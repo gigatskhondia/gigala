@@ -28,7 +28,7 @@ A different approach. To align chatGPT to human values, they have used a thing c
 
 To keep up to date with the project please check [Gigala](https://www.facebook.com/GigaTsk) page.
 
-#### [Contact](https://www.facebook.com/GigaTsk) me if you are interested in any of my solutions. I can scale, tailor and optimize them to your project!
+#### [Contact](https://www.facebook.com/GigaTsk) me if you are interested in investing in my research or adapting my solutions to your project.
 
 Do you like the project? Star me to support it!
 
