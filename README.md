@@ -20,11 +20,9 @@ Schematic design of bionic partition:
 <img width="304" alt="Screenshot 2023-02-01 at 21 19 39" src="https://user-images.githubusercontent.com/31343916/216661713-34ff7766-0a4d-436d-979c-72053c2c45c8.png">
 
 #### Latest ideas: ####
-You will be able to feed an image to newer versions of chatGPT. Apparently you can ask it questions about this image. For example, you can ask 'do you like this image?'. In case of designing a bridge, you can ask ' do you like this design of a bridge?'. Based on chatGPT answer you can calculate a sentiment score. You can feed this sentiment score to your RL agent as additional reward. You do not have to ask chatGPT every MDP iteration step, just once in a while.
+How to combine my solution with latest developments in LLM: You can feed an image to chatGPT and ask it questions about this image. For example, you can ask 'do you like this image?'. In case of designing a structure like a bridge, you can ask 'do you like this design of a bridge?'. Based on chatGPT answer you can calculate a sentiment score. You can feed this sentiment score to your RL agent as additional reward (making it huge). You do not have to ask chatGPT every MDP iteration step, just once in a while.
 
 <img width="568" alt="Screenshot 2023-05-16 at 11 37 50" src="https://github.com/gigatskhondia/gigala/assets/31343916/ef983d4e-e8f6-456e-80b9-d2fa95aba1d8">
-
-A different approach. To align chatGPT to human values, they have used a thing called Reinforcement Learning from Human Feedback (RLHF). Hence, I thought, what if to impose 'physics understanding' on chatGPT you need to align it via Reinforcement Learning from Partial Differential Equations Feedback (RLPDEF). For example you can prompt chatGPT to answer question about physical phenomenon while guiding and tuning it by RLPDEF. RLPDEF might be an MDP where the environment is represented by PDE of physical problem e.g. fluid flow or my RL automated design.
 
 To keep up to date with the project please check [Gigala](https://www.facebook.com/GigaTsk) page.
 
