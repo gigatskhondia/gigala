@@ -67,6 +67,27 @@
         white-space: nowrap;
         -webkit-overflow-scrolling: touch;
       }
+
+      .container {
+      width: 80%;
+      height: 200px;
+      background: aqua;
+      margin: auto;
+      padding: 10px;
+    }
+
+    .one {
+      width: 15%;
+      height: 200px;
+      background: red;
+      float: left;
+    }
+
+    .two {
+      margin-left: 15%;
+      height: 200px;
+      background: black;
+    }
     </style>
 
 
@@ -84,12 +105,12 @@
   </header>
 
   <main>
-    <div class="row">
-        <div class="col-sm-8">
+    <div class="container">
+        <div class="one">
             <h1>What we do </h1>
             <p>We apply artificial intelligence driven generative design to provide state-of-the-art solutions in science and engineering. Our main focus is design of structural and electrical elements and components for offshore and aerospace industries. </p>
         </div>
-         <div class="col-sm-6">
+         <div class="two">
             <h1>Our Mission</h1>
             <p>Solving creativity to advance science and engineering. Making AI accessible.</p>
         </div>
