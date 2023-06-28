@@ -26,4 +26,8 @@ On how to apply recent developments in Generative AI to my solution: you can fee
 
 To keep up to date with the project please check [Gigala](https://www.facebook.com/GigaTsk) page.
 
-#### [Contact](https://www.facebook.com/GigaTsk) me if you are interested in investing in my research or adapting my solutions to your project, or just star me to support.
+
+How to support:
+* star this repository
+* Sponsor this project (see the link to the left) 
+* [Contact](https://www.facebook.com/GigaTsk) me if you are interested in investing in my research or adapting my solutions to your project
