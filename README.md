@@ -28,6 +28,6 @@ To keep up to date with the project please check [Gigala](https://www.facebook.c
 
 
 How to support:
-* star this repository
-* Sponsor this project (see the link to the left) 
+* Star this project
+* [Sponsor](https://www.paypal.me/gigatskhondia) this project 
 * [Contact](https://www.facebook.com/GigaTsk) me if you are interested in investing in my research or adapting my solutions to your project
