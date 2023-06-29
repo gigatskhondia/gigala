@@ -17,7 +17,8 @@ Please check my [blog](https://gigatskhondia.medium.com/) and [manuals](https://
 
 Schematic design of bionic partition: 
 
-<img width="304" alt="Screenshot 2023-02-01 at 21 19 39" src="https://user-images.githubusercontent.com/31343916/216661713-34ff7766-0a4d-436d-979c-72053c2c45c8.png">
+<img width="342" alt="Screenshot 2023-06-29 at 15 56 49" src="https://github.com/gigatskhondia/gigala/assets/31343916/54689109-65ec-4b4c-87ae-1fe11dba031c">
+
 
 #### Latest ideas: ####
 On how to apply recent developments in Generative AI to my solution: you can feed an image to chatGPT and ask it questions about this image. For example, you can ask 'do you like this image?'. In case of designing a structure like a bridge, you can ask 'do you like this design of a bridge?'. Based on chatGPT's answer you can calculate a sentiment score. You can feed this sentiment score to your RL agent as additional reward (making it huge). You do not have to ask chatGPT every MDP iteration step, just once in a while.
