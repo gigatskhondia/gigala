@@ -31,7 +31,7 @@ To keep up to date with the project please check [Gigala](https://gigala.io/) pa
 * Validate PDE pipe model against the paper
 * Imporve sizing models 
   *  Do not need to remesh, just set stiffness to a small number for absent elements 
-  *  Use different objective e.g., compliance
+  *  Use different objective, e.g. compliance
 *  Revive Alpha and MCTS models 
 
 #### How to support: ####
