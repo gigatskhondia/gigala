@@ -15,7 +15,7 @@ Please check my [blog](https://gigatskhondia.medium.com/) and [manuals](https://
 * [Python and Finite Element Methods: A Match Made in Heaven?](https://gigatskhondia.medium.com/python-and-finite-element-methods-a-match-made-in-heaven-ee2ed7ca14ee)
 
 
-Schematic design of bionic partition: 
+Design of bionic partition: 
 
 <img width="342" alt="Screenshot 2023-06-29 at 15 56 49" src="https://github.com/gigatskhondia/gigala/assets/31343916/54689109-65ec-4b4c-87ae-1fe11dba031c">
 
