@@ -32,6 +32,7 @@ To keep up to date with the project please check [Gigala](https://gigala.io/) pa
 * Imporve sizing models 
   *  Do not need to remesh, just set stiffness to a small number for absent elements 
   *  Use different objective, e.g. compliance
+  *  Use CNN for features ?
 *  Revive Alpha and MCTS models 
 
 #### How to support: ####
