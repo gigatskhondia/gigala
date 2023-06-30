@@ -34,7 +34,8 @@ To keep up to date with the project please check [Gigala](https://gigala.io/) pa
   *  Use different objective, e.g. compliance
   *  Use CNN for features ?
   *  Test generalizability
-*  Revive Alpha and MCTS models 
+*  Revive Alpha and MCTS models
+*  Update manuals
 
 #### How to support: ####
 * Star this project
