@@ -28,7 +28,7 @@ On how to apply recent developments in Generative AI to my solution: you can fee
 To keep up to date with the project please check [Gigala](https://gigala.io/) page.
 
 #### TODO: ####
-* Validate PDE model against the paper
+* Validate PDE pipe model against the paper
 * Imporve sizing models 
   *  Do not need to remesh, just set stiffness to a small number for absent elements 
   *  Use different objective e.g., compliance
