@@ -26,7 +26,7 @@ On how to apply recent developments in Generative AI to my solution: you can fee
 <img width="568" alt="Screenshot 2023-05-16 at 11 37 50" src="https://github.com/gigatskhondia/gigala/assets/31343916/ef983d4e-e8f6-456e-80b9-d2fa95aba1d8">
 
 #### TODO: ####
-* Validate PDE pipe model against the paper
+* Validate robotic and PDE pipe models
 * Imporve sizing models 
   *  Do not need to remesh, just set stiffness to a small number for absent elements 
   *  Use different objective, e.g. compliance
