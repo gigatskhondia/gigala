@@ -25,8 +25,6 @@ On how to apply recent developments in Generative AI to my solution: you can fee
 
 <img width="568" alt="Screenshot 2023-05-16 at 11 37 50" src="https://github.com/gigatskhondia/gigala/assets/31343916/ef983d4e-e8f6-456e-80b9-d2fa95aba1d8">
 
-To keep up to date with the project please check [Gigala](https://gigala.io/) page.
-
 #### TODO: ####
 * Validate PDE pipe model against the paper
 * Imporve sizing models 
@@ -36,6 +34,8 @@ To keep up to date with the project please check [Gigala](https://gigala.io/) pa
   *  Test generalizability
 *  Revive Alpha and MCTS models
 *  Update manuals
+
+To keep up to date with the project please check [Gigala](https://gigala.io/) page.
 
 #### How to support: ####
 * Star this project
