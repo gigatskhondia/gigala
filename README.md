@@ -34,6 +34,9 @@ On how to apply recent developments in Generative AI to my solution: you can fee
   *  Test generalizability
 *  Revive Alpha and MCTS models
 *  Update manuals
+*  Design MEMS
+  * use SfePy for FEM ?
+  * use GNN for features ? 
 
 To keep up to date with the project please check [Gigala](https://gigala.io/) page.
 
