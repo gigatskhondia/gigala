@@ -31,6 +31,7 @@ On how to apply recent developments in Generative AI to my solution: you can fee
   *  Do not need to remesh, just set stiffness to a small number for absent elements 
   *  Use different objective, e.g. compliance
   *  Use CNN for features ?
+  *  apply RL training metrics
   *  Test generalizability
 *  Revive Alpha and MCTS models
 *  Update manuals
