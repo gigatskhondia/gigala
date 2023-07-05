@@ -33,7 +33,7 @@ On how to apply recent developments in Generative AI to my solution: you can fee
   *  Use CNN for features ?
   *  Apply RL training metrics
   *  Test generalizability
-*  Revive Alpha and MCTS models
+*  Revive Alpha and MCTS models, utilize AlphaDev
 *  Update manuals
 *  Design MEMS
    *  Use SfePy for FEM ?
