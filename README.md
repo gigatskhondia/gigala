@@ -28,6 +28,7 @@ On how to apply recent developments in Generative AI to my solution: you can fee
 #### TODO: ####
 * Validate robotic and PDE pipe models
 * Imporve sizing models 
+  *  Use action as part of observation?
   *  Do not need to remesh, just set stiffness to a small number for absent elements 
   *  Use different objective, e.g. compliance
   *  Use CNN for features ?
