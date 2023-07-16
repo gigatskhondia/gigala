@@ -26,20 +26,18 @@ On how to apply recent developments in Generative AI to my solution: you can fee
 <img width="568" alt="Screenshot 2023-05-16 at 11 37 50" src="https://github.com/gigatskhondia/gigala/assets/31343916/ef983d4e-e8f6-456e-80b9-d2fa95aba1d8">
 
 #### TODO: ####
-* Validate robotic and PDE pipe models
-* Imporve sizing models 
-  *  Use action as part of observation?
-  *  Do not need to remesh, just set stiffness to a small number for absent elements 
-  *  Use different objective, e.g. compliance
-  *  Use CNN for features ?
-  *  Apply RL training metrics
-  *  Test generalizability
+  
 *  Revive Alpha and MCTS models, utilize AlphaDev
 *  Update manuals
 *  Design MEMS
    *  Use SfePy for FEM ?
-   *  Use GNN for features ?
+   *  Use action as part of observation?
+   *  Do not need to remesh, just set stiffness to a small number for absent elements 
+   *  Use GNN or CNN for features ?
+   *  Measure RL trianing progress
+   *  Experiment with different objective functions e.g., compliance, etc.
    *  Test generalizability
+*  Validate robotic and PDE pipe models
 
 To keep up to date with the project please check [Gigala](https://gigala.io/) page.
 
