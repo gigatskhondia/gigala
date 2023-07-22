@@ -28,8 +28,6 @@ On how to apply recent developments in Generative AI to my solution: you can fee
 
 #### TODO: ####
   
-*  Revive Alpha and MCTS models, utilize AlphaDev
-*  Update manuals
 *  Design MEMS
    *  Use SfePy for FEM ?
    *  Use action as part of observation?
