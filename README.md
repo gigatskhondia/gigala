@@ -6,6 +6,7 @@ Are you interested in the new ways of engineering design? This repository is an 
 Please check my [blog](https://gigatskhondia.medium.com/) and [manuals](https://gigatskhondia.github.io/gigala/) for the specifics of the models and algorithms I use:
 
 * [Engineering Design by Reinforcement Learning and Finite Element Methods.](https://gigatskhondia.medium.com/engineering-design-by-reinforcement-learning-and-finite-element-methods-82eb57796424)
+* [Topology optimization with reinforcement learning.](https://gigatskhondia.medium.com/topology-optimization-with-reinforcement-learning-d69688ba4fb4)
 * [Engineering Design by Genetic Algorithms and Finite Element Methods.](https://gigatskhondia.medium.com/engineering-design-by-genetic-algorithms-and-finite-element-methods-5077ebadd16e)
 * [On artificial intelligence aided engineering design.](https://gigatskhondia.medium.com/on-artificial-intelligence-aided-engineering-design-a6cf6f76b3d9)
 * [Some ideas on using reinforcement learning in marine construction and sustainable energy development.](https://gigatskhondia.medium.com/using-reinforcement-learning-in-marine-construction-and-sustainable-energy-development-b5f301fb2397)
