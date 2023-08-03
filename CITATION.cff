@@ -13,6 +13,9 @@ identifiers:
   - type: url
     value: 'https://gigatskhondia.medium.com/'
     description: Medium blog about my project's developments.
+  - type: url
+    value: 'https://www.researchgate.net/profile/Georgy-Tskhondiya'
+    description: My ResearchGate profile.
 repository-code: 'https://github.com/gigatskhondia/gigala'
 abstract: >-
   Applying artificial intelligence algorithms for the
