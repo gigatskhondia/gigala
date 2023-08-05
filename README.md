@@ -22,7 +22,8 @@ Design of bionic partition (GA on the left, and RL on the right):
 
 Topology optimization by reinforcement learning:
 
-<img width="165" alt="Screenshot 2023-07-31 at 22 44 45" src="https://github.com/gigatskhondia/gigala/assets/31343916/bde9577c-0647-4c29-82b1-8f402deff7b0"><img width="277" alt="Screenshot 2023-08-02 at 12 39 14" src="https://github.com/gigatskhondia/gigala/assets/31343916/e97365d9-71cc-4c15-a790-4cb04037c163">
+<img width="165" alt="Screenshot 2023-07-31 at 22 44 45" src="https://github.com/gigatskhondia/gigala/assets/31343916/bde9577c-0647-4c29-82b1-8f402deff7b0"><img width="277" alt="Screenshot 2023-08-02 at 12 39 14" src="https://github.com/gigatskhondia/gigala/assets/31343916/e97365d9-71cc-4c15-a790-4cb04037c163"><img width="241" alt="Screenshot 2023-08-05 at 15 40 24" src="https://github.com/gigatskhondia/gigala/assets/31343916/48246d51-37bc-4858-8490-904441c1063b">
+
 
 #### Latest ideas: ####
 On how to apply recent developments in Generative AI to my solution: you can feed an image to chatGPT and ask it questions about this image. For example, you can ask 'do you like this image?'. In case of designing a structure like a bridge, you can ask 'do you like this design of a bridge?'. Based on chatGPT's answer you can calculate a sentiment score. You can feed this sentiment score to your RL agent as additional reward (making it huge). You do not have to ask chatGPT every MDP iteration step, just once in a while. After you get your final geometry, you can make it look pretty or 3D by enhancing it with Stable Diffusion.
