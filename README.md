@@ -33,6 +33,7 @@ On how to apply recent developments in Generative AI to my solution: you can fee
 #### TODO: ####
   
 *  Design MEMS
+   *  Force inverting mechanism
    *  Use SfePy for FEM ?
    *  Use action as part of observation?
    *  Do not need to remesh, just set stiffness to a small number for absent elements 
@@ -40,6 +41,7 @@ On how to apply recent developments in Generative AI to my solution: you can fee
    *  Measure RL trianing progress
    *  Experiment with different objective functions e.g., compliance, etc.
    *  Test generalizability
+*  Engine pylon
 *  Validate robotic and PDE pipe models
 
 To keep up to date with the project please check [Gigala](https://gigala.io/) page.
