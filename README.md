@@ -42,6 +42,8 @@ On how to apply recent developments in Generative AI to my solution: you can fee
    *  Experiment with different objective functions e.g., compliance, etc.
    *  Test generalizability
 *  Engine pylon
+   *  Use Elmer FEM for the engine
+   *  Use python for topology design zone 
 *  Validate robotic and PDE pipe models
 
 To keep up to date with the project please check [Gigala](https://gigala.io/) page.
