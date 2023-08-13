@@ -43,7 +43,8 @@ On how to apply recent developments in Generative AI to my solution: you can fee
    *  Test generalizability
 *  Engine pylon
    *  Use Elmer FEM or SfePy for the engine
-   *  Use python for topology design zone 
+   *  Use python for topology design zone
+   *  Hierarchical RL 
 *  Validate robotic and PDE pipe models
 
 To keep up to date with the project please check [Gigala](https://gigala.io/) page.
