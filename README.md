@@ -39,7 +39,7 @@ On how to apply recent developments in Generative AI to my solution: you can fee
    *  Do not need to remesh, just set stiffness to a small number for absent elements 
    *  Use GNN or CNN for features ?
    *  Measure RL trianing progress
-   *  Experiment with different objective functions e.g., compliance, etc.
+   *  Experiment with different objective functions e.g., compliance, stress based, etc.
    *  Test generalizability
 *  Engine pylon
    *  Use Elmer FEM or SfePy for the engine
