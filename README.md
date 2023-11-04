@@ -1,6 +1,17 @@
 # Engineering Design by Artificial Intelligence
 
 Are you interested in the new ways of engineering design? This repository is an attempt to apply artificial intelligence algorithms for the purpose of engineering design of electrical and structural elements and components. I combine numerical simulation like finite element analysis with artificial intelligence like reinforcement learning and genetic algorithms to produce optimal designs. In fact, to the best of my knowledge, I was pioneering the combination of RL and FEA for the purpose of structural engineering design since 2018. Recently, my work has been focused on the analysis of dynamics of offshore structures, electrical circuits and topology optimization. I am constantly exploring different ways that AI can be applied to science and engineering. With my diverse interests, I am using this repository as a testbed for my ideas to create the industry standard software for artificial intelligence aided design. I hope that my work can inspire you to explore the different ways that AI can be applied to your field.
+
+The software that I develop currently consists of two moduli: offshore dynamics and topology optimization. It uses artificial intelligence to assist an engineer in her design. You can use it as research or engineering analysis tool for different mechanical structures, riser systems, mooring systems, pipelay, renewables, etc.
+
+The software is constantly being developed. Some models that it can do now are:
+
+* Topology optimization of structures
+* Topology optimization of parts
+* Pipelay 3D
+* Pipelay 2D
+* Pipelay profile optimization
+* Spool design
  
  
 Please check my [blog](https://gigatskhondia.medium.com/) and [manuals](https://gigatskhondia.github.io/gigala/) for the specifics of the models and algorithms I use:
