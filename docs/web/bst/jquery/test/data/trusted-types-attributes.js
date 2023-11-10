@@ -1,1 +1,0 @@
-window.testMessage = "script run";
