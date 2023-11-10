@@ -1,0 +1,162 @@
+{
+  "name": "jquery",
+  "title": "jQuery",
+  "description": "JavaScript library for DOM operations",
+  "version": "4.0.0-pre",
+  "type": "module",
+  "exports": {
+    ".": {
+      "node": {
+        "module": "./dist-module/jquery.module.js",
+        "import": "./dist-module/jquery.node-module-wrapper.js",
+        "require": "./dist/jquery.js"
+      },
+      "production": "./dist-module/jquery.module.min.js",
+      "development": "./dist-module/jquery.module.js",
+      "script": "./dist/jquery.min.js",
+      "default": "./dist-module/jquery.module.min.js"
+    },
+    "./slim": {
+      "node": {
+        "module": "./dist-module/jquery.slim.module.js",
+        "import": "./dist-module/jquery.node-module-wrapper.slim.js",
+        "require": "./dist/jquery.slim.js"
+      },
+      "production": "./dist-module/jquery.slim.module.min.js",
+      "development": "./dist-module/jquery.slim.module.js",
+      "script": "./dist/jquery.slim.min.js",
+      "default": "./dist-module/jquery.slim.module.min.js"
+    },
+    "./factory": {
+      "node": "./dist/jquery.factory.js",
+      "default": "./dist-module/jquery.factory.module.js"
+    },
+    "./factory-slim": {
+      "node": "./dist/jquery.factory.slim.js",
+      "default": "./dist-module/jquery.factory.slim.module.js"
+    },
+    "./src/*.js": "./src/*.js"
+  },
+  "main": "dist/jquery.js",
+  "scripts": {
+    "babel:tests": "babel test/data/core/jquery-iterability-transpiled-es6.js --out-file test/data/core/jquery-iterability-transpiled.js",
+    "build": "node ./build/command.js",
+    "build:all": "node -e \"require('./build/tasks/build.js').buildDefaultFiles()\"",
+    "build:main": "node -e \"require('./build/tasks/build.js').build()\"",
+    "jenkins": "npm run pretest && npm run test:browserless",
+    "lint:dev": "eslint --cache .",
+    "lint:json": "jsonlint --quiet package.json",
+    "lint": "concurrently -r \"npm:lint:dev\" \"npm:lint:json\"",
+    "npmcopy": "node build/tasks/npmcopy.js",
+    "prepare": "husky install",
+    "pretest": "npm run qunit-fixture && npm run babel:tests && npm run npmcopy",
+    "qunit-fixture": "node build/tasks/qunit-fixture.js",
+    "start": "node -e \"require('./build/tasks/build.js').buildDefaultFiles({ watch: true })\"",
+    "test:browserless": "npm run pretest && npm run test:node_smoke_tests && npm run test:promises_aplus && npm run test:jsdom",
+    "test:browser": "npm run pretest && npm run build:all && grunt karma:main",
+    "test:esmodules": "npm run pretest && npm run build:main && grunt karma:esmodules",
+    "test:jsdom": "npm run pretest && npm run build:main && grunt test:jsdom",
+    "test:no-deprecated": "npm run pretest && npm run build -- -e deprecated && grunt karma:main",
+    "test:selector-native": "npm run pretest && npm run build -- -e selector && grunt karma:main",
+    "test:slim": "npm run pretest && npm run build -- --slim && grunt karma:main",
+    "test:node_smoke_tests": "npm run pretest && npm run build:all && node build/tasks/node_smoke_tests.js",
+    "test:promises_aplus": "npm run build:main && node build/tasks/promises_aplus_tests.js",
+    "test": "npm run build:all && npm run lint && npm run test:browserless && npm run test:browser && npm run test:esmodules && npm run test:slim && npm run test:no-deprecated && npm run test:selector-native"
+  },
+  "homepage": "https://jquery.com",
+  "author": {
+    "name": "OpenJS Foundation and other contributors",
+    "url": "https://github.com/jquery/jquery/blob/main/AUTHORS.txt"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jquery/jquery.git"
+  },
+  "keywords": [
+    "jquery",
+    "javascript",
+    "browser",
+    "library"
+  ],
+  "bugs": {
+    "url": "https://github.com/jquery/jquery/issues"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@babel/cli": "7.22.9",
+    "@babel/core": "7.10.5",
+    "@babel/plugin-transform-for-of": "7.10.4",
+    "@prantlf/jsonlint": "14.0.3",
+    "@swc/core": "1.3.78",
+    "bootstrap": "5.3.0",
+    "chalk": "5.3.0",
+    "colors": "1.4.0",
+    "commitplease": "3.2.0",
+    "concurrently": "8.2.0",
+    "core-js-bundle": "3.6.5",
+    "eslint": "8.51.0",
+    "eslint-config-jquery": "3.0.2",
+    "eslint-plugin-import": "2.28.1",
+    "express": "4.18.2",
+    "globals": "13.20.0",
+    "grunt": "1.5.3",
+    "grunt-cli": "1.4.3",
+    "grunt-git-authors": "3.2.0",
+    "grunt-karma": "4.0.2",
+    "husky": "8.0.3",
+    "jsdom": "19.0.0",
+    "karma": "6.4.1",
+    "karma-browserstack-launcher": "1.6.0",
+    "karma-chrome-launcher": "3.1.1",
+    "karma-firefox-launcher": "2.1.2",
+    "karma-ie-launcher": "1.0.0",
+    "karma-jsdom-launcher": "12.0.0",
+    "karma-qunit": "4.1.2",
+    "karma-webkit-launcher": "2.1.0",
+    "load-grunt-tasks": "5.1.0",
+    "multiparty": "4.2.3",
+    "native-promise-only": "0.8.1",
+    "playwright-webkit": "1.30.0",
+    "promises-aplus-tests": "2.1.2",
+    "q": "1.5.1",
+    "qunit": "2.10.1",
+    "raw-body": "2.4.1",
+    "requirejs": "2.3.6",
+    "rimraf": "3.0.2",
+    "rollup": "2.21.0",
+    "sinon": "7.3.1",
+    "strip-json-comments": "3.1.1",
+    "testswarm": "1.1.2",
+    "yargs": "17.7.2"
+  },
+  "commitplease": {
+    "nohook": true,
+    "components": [
+      "Docs",
+      "Tests",
+      "Build",
+      "Support",
+      "Release",
+      "Core",
+      "Ajax",
+      "Attributes",
+      "Callbacks",
+      "CSS",
+      "Data",
+      "Deferred",
+      "Deprecated",
+      "Dimensions",
+      "Effects",
+      "Event",
+      "Manipulation",
+      "Offset",
+      "Queue",
+      "Selector",
+      "Serialize",
+      "Traversing",
+      "Wrap"
+    ],
+    "markerPattern": "^((clos|fix|resolv)(e[sd]|ing))|^(refs?)",
+    "ticketPattern": "^((Closes|Fixes) ([a-zA-Z]{2,}-)[0-9]+)|^(Refs? [^#])"
+  }
+}

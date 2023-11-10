@@ -1,0 +1,31 @@
+.project
+.settings
+*~
+*.diff
+*.patch
+/*.html
+.DS_Store
+.bower.json
+.sizecache.json
+yarn.lock
+.eslintcache
+
+npm-debug.log*
+
+# Ignore everything in `dist` folder except for
+# the ESLint config & package.json files
+/dist/*
+!/dist/package.json
+
+# Ignore everything in the `dist-module` folder except for the ESLint config,
+# package.json & Node module wrapper files
+/dist-module/*
+!/dist-module/package.json
+!/dist-module/jquery.node-module-wrapper.js
+!/dist-module/jquery.node-module-wrapper.slim.js
+
+/external
+/node_modules
+
+/test/data/core/jquery-iterability-transpiled.js
+/test/data/qunit-fixture.js
