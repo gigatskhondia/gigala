@@ -15,7 +15,7 @@ def train(params):
     env_name ="T0-h-v1"
 
     save_episode = 20               # keep saving every n episodes
-    max_episodes = 1000         # max num of training episodes
+    max_episodes = 2000         # max num of training episodes
     random_seed = params['random_seed']
     render = False
     
@@ -127,7 +127,7 @@ def objective(trial):
 
 
 study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler())
-study.optimize(objective, n_trials=30)
+study.optimize(objective, n_trials=40)
 
 
 best_trial = study.best_trial
