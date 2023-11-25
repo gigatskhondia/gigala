@@ -14,7 +14,6 @@ Hierarchical Actor Critic (HAC) algorithm described in the paper, [Learning Mult
 - To train a new network run `train.py`
 - To test a preTrained network run `test.py`
 - For a detailed explanation of offsets and bounds, refer to [issue #2](https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/issues/2)
-- For hyperparameters used for preTraining the pendulum policy refer to [issue #3](https://github.com/nikhilbarhate99/Hierarchical-Actor-Critic-HAC-PyTorch/issues/3)
 
 
 ## Implementation Details
