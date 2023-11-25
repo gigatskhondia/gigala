@@ -29,5 +29,5 @@ Hierarchical Actor Critic (HAC) algorithm described in the paper, [Learning Mult
 ## Requirements
 
 - Python 
-- [PyTorch](https://pytorch.org/)
-- [OpenAI gym](https://gym.openai.com/)
+- PyTorch
+- OpenAI gym
