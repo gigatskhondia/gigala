@@ -103,7 +103,8 @@ class HAC:
                         
                 tmp=action*(1-env.x.reshape(len(action),))
                 next_state, rew, done, _ = env.step(tmp) # to make NN aware of the current topology 
-
+                # when altering boundary conditions and forces, do not change action values in those cells
+                
                 if self.render:
                     
                     env.render() ##########
