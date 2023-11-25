@@ -132,6 +132,8 @@ study.optimize(objective, n_trials=30)
 
 best_trial = study.best_trial
 
+print()
+
 for key, value in best_trial.params.items():
     print("{}: {}".format(key, value))
     
