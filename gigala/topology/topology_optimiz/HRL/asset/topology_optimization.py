@@ -112,7 +112,7 @@ class CantileverEnv(gym.Env):
                 
         done=False
             
-        if self.const>0.7:
+        if self.const>0.68:
 #             self.reward-=1
             done=True
         

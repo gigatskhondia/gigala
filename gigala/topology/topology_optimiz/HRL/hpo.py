@@ -15,7 +15,7 @@ def train(params):
     env_name ="T0-h-v1"
 
     save_episode = 20               # keep saving every n episodes
-    max_episodes = 2000         # max num of training episodes
+    max_episodes = 1000         # max num of training episodes
     random_seed = params['random_seed']
     render = False
     
@@ -50,8 +50,8 @@ def train(params):
     exploration_action_noise = np.array([params['action_noise']])        
     exploration_state_noise = np.array([params['state_noise_1'], params['state_noise_2']])
 
-    goal_state=np.array([0.7, 20])
-    threshold=[0.1, 5]
+    goal_state=np.array([0.68, 300])
+    threshold=[0.2, 3]
     
     # HAC parameters:
     k_level = 2               # num of levels in hierarchy
