@@ -18,6 +18,7 @@ Please check my [blog](https://gigatskhondia.medium.com/) and [manuals](https://
 
 * [Engineering Design by Reinforcement Learning and Finite Element Methods.](https://gigatskhondia.medium.com/engineering-design-by-reinforcement-learning-and-finite-element-methods-82eb57796424)
 * [Topology optimization with reinforcement learning.](https://gigatskhondia.medium.com/topology-optimization-with-reinforcement-learning-d69688ba4fb4)
+* [Using Hierarchical Reinforcement Learning for Fast Topology Optimisation.](https://gigatskhondia.medium.com/using-hierarchical-reinforcement-learning-for-fast-topology-optimisation-85aa0c07fb7f)
 * [Some philosophical aspects of artificial intelligence.](https://gigatskhondia.medium.com/some-philosophical-aspects-of-artificial-intelligence-0a0f0bdb6312)
 * [Engineering Design by Genetic Algorithms and Finite Element Methods.](https://gigatskhondia.medium.com/engineering-design-by-genetic-algorithms-and-finite-element-methods-5077ebadd16e)
 * [On artificial intelligence aided engineering design.](https://gigatskhondia.medium.com/on-artificial-intelligence-aided-engineering-design-a6cf6f76b3d9)
