@@ -17,9 +17,9 @@ def test():
     render = False
     
     env = gym.make(env_name)
-    env.layer_dim=8
+    env.layer_dim=2
     env.n_layers=8
-    env.optimizer='RMSprop'
+    env.optimizer='Adam'
     state_dim = env.observation_space.shape[0]
     action_dim = env.N_DISCRETE_ACTIONS
     
@@ -44,22 +44,22 @@ def test():
     state_clip_low = np.array([0, 0])
     state_clip_high = np.array([1, 1e7])
 
-    exploration_action_noise = np.array([0.24219261915635437])        
-    exploration_state_noise = np.array([ 0.1646942449932199,   2440.6615655269966])
+    exploration_action_noise = np.array([0.05896732710057144])        
+    exploration_state_noise = np.array([ 0.23419240446172046,    1596373.7031755128])
 
     goal_state=np.array([0.6, 200])
     threshold=[0.2, 100]
 
     # HAC parameters:
     k_level = 2               # num of levels in hierarchy
-    H = 9          # time horizon to achieve subgoal
-    lamda =  0.8728972299317204       # subgoal testing parameter
+    H =12        # time horizon to achieve subgoal
+    lamda =  0.16722350293341795      # subgoal testing parameter
     
     # DDPG parameters:
-    gamma = 0.9915133218849363        # discount factor for future rewards
-    n_iter =     52     # update policy n_iter times in one DDPG update
-    batch_size =    255   # num of transitions sampled from replay buffer
-    lr = 0.14788701064680584
+    gamma =0.9555434687494773        # discount factor for future rewards
+    n_iter =    102    # update policy n_iter times in one DDPG update
+    batch_size =    156  # num of transitions sampled from replay buffer
+    lr = 0.006340634457269721
     
     # save trained models
     directory = "./preTrained/{}/{}level/".format(env_name, k_level) 

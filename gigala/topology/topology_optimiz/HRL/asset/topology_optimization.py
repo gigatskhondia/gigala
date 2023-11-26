@@ -98,6 +98,7 @@ class CantileverEnv(gym.Env):
         self.args = get_args(*mbb_beam(rd=self.rd))
         
         act=np.argmax(action)
+     
             
         penalty=self.M.action_space_(act, self.x)
         

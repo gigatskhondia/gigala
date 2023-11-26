@@ -61,6 +61,7 @@ class HAC:
         self.goals[i_level] = goal
         
         # H attempts
+        rew=0
         for _ in range(self.H):
             # if this is a subgoal test, then next/lower level goal has to be a subgoal test
             is_next_subgoal_test = is_subgoal_test
@@ -125,9 +126,11 @@ class HAC:
                 self.replay_buffer[i_level].add((state, action, 10.0, next_state, goal, 0.0, float(done)))
             else:
                 self.replay_buffer[i_level].add((state, action, -1.0, next_state, goal, self.gamma, float(done)))
+                # self.replay_buffer[i_level].add((state, action, rew, next_state, goal, self.gamma, float(done)))
 
             # copy for goal transition
             goal_transitions.append([state, action, -1.0, next_state, None, self.gamma, float(done)])
+            # goal_transitions.append([state, action, rew, next_state, None, self.gamma, float(done)])
 
             state = next_state
             
