@@ -46,7 +46,9 @@ class HAC:
         self.exploration_state_noise = exploration_state_noise
     
     def check_goal(self, state, goal, threshold, env):
-        if abs(state[0]-goal[0])> threshold[0] or state[1]>goal[1]:    
+        # if abs(state[0]-goal[0])> threshold[0] or state[1]>goal[1]:  
+        if abs(state[0]-goal[0])> threshold[0] or abs(state[1]-goal[1])> threshold[1]:    
+  
             return False
         return True
        
@@ -107,15 +109,8 @@ class HAC:
                 
                 if self.render:
                     
-                    env.render() ##########
-                    
-                    # if self.k_level == 2:
-                    #     # env.unwrapped.viewer=None
-                    #     env.unwrapped.render_goal(self.goals[0], self.goals[1])
-                    # elif self.k_level == 3:
-                    #     env.unwrapped.render_goal_2(self.goals[0], self.goals[1], self.goals[2])
-                    
-                    
+                    env.render() 
+        
                 # this is for logging
                 self.reward += rew
                 self.timestep +=1

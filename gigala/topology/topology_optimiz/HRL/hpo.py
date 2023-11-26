@@ -51,7 +51,7 @@ def train(params):
     exploration_state_noise = np.array([params['state_noise_1'], params['state_noise_2']])
 
     goal_state=np.array([0.68, 300])
-    threshold=[0.2, 3]
+    threshold=[0.2, 10]
     
     # HAC parameters:
     k_level = 2               # num of levels in hierarchy
