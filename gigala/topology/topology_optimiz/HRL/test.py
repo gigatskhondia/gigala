@@ -13,13 +13,13 @@ def test():
 
     save_episode = 20               # keep saving every n episodes
     max_episodes =  10         # max num of training episodes
-    random_seed =  11
+    random_seed =  5
     render = False
     
     env = gym.make(env_name)
-    env.layer_dim=30
-    env.n_layers=3
-    env.optimizer='SGD'
+    env.layer_dim=8
+    env.n_layers=8
+    env.optimizer='RMSprop'
     state_dim = env.observation_space.shape[0]
     action_dim = env.N_DISCRETE_ACTIONS
     
@@ -44,22 +44,22 @@ def test():
     state_clip_low = np.array([0, 0])
     state_clip_high = np.array([1, 1e7])
 
-    exploration_action_noise = np.array([0.0003195125297386358])        
-    exploration_state_noise = np.array([0.00548251343663597,  3.2178415244332585])
+    exploration_action_noise = np.array([0.24219261915635437])        
+    exploration_state_noise = np.array([ 0.1646942449932199,   2440.6615655269966])
 
-    goal_state=np.array([0.68, 300])
-    threshold=[0.2, 10]
+    goal_state=np.array([0.6, 200])
+    threshold=[0.2, 100]
 
     # HAC parameters:
     k_level = 2               # num of levels in hierarchy
-    H = 60           # time horizon to achieve subgoal
-    lamda =  0.5898934642514728           # subgoal testing parameter
+    H = 9          # time horizon to achieve subgoal
+    lamda =  0.8728972299317204       # subgoal testing parameter
     
     # DDPG parameters:
-    gamma = 0.9850495153159009         # discount factor for future rewards
-    n_iter =   23       # update policy n_iter times in one DDPG update
-    batch_size =    306    # num of transitions sampled from replay buffer
-    lr = 0.0820148510909737
+    gamma = 0.9915133218849363        # discount factor for future rewards
+    n_iter =     52     # update policy n_iter times in one DDPG update
+    batch_size =    255   # num of transitions sampled from replay buffer
+    lr = 0.14788701064680584
     
     # save trained models
     directory = "./preTrained/{}/{}level/".format(env_name, k_level) 
@@ -83,7 +83,7 @@ def test():
     agent.load(directory, filename)
 
     # Evaluation
-    env.M.flag_=True
+    # env.M.flag_=False
     for i_episode in range(1, max_episodes+1):
         
         agent.reward = 0
@@ -94,7 +94,7 @@ def test():
         agent.run_HAC(env, k_level-1, state, goal_state, True)
         env.render()
         
-        print("Episode: {}\t Reward: {}\t len: {}".format(i_episode, agent.reward, agent.timestep))
+        print("Episode: {}\t Reward: {}\t len: {}\t  tmp: {}\t const: {}  ".format(i_episode, agent.reward, agent.timestep,env.tmp,env.const))
     
     env.close()
   

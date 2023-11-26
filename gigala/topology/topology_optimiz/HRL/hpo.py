@@ -104,18 +104,21 @@ def objective(trial):
 
     params = {
               'lr': trial.suggest_loguniform('lr', 1e-5, 1),
-              'layer_dim':trial.suggest_int("layer_dim", 2, 32),
-              'n_layers':trial.suggest_int("n_layers", 2, 16),
-              'optimizer': trial.suggest_categorical("optimizer", ["Adam", "RMSprop", "SGD"]),
-              'random_seed': trial.suggest_int("random_seed", 0, 50),
-              'H':  trial.suggest_int("H", 3, 70),
+              'layer_dim':trial.suggest_int("layer_dim", 2, 16),
+              'n_layers':trial.suggest_int("n_layers", 2, 8),
+              'optimizer': trial.suggest_categorical("optimizer", ["Adam", 
+                                                                   "RMSprop",
+                                                                   "SGD"
+                                                                   ]),
+              'random_seed': trial.suggest_int("random_seed", 0, 5),
+              'H':  trial.suggest_int("H", 3, 16),
               'lamda': trial.suggest_uniform('lamda', 0, 1),
               'gamma': trial.suggest_uniform('gamma', 0.95, 0.999),
-              'n_iter': trial.suggest_int('n_iter', 10, 500),
-              'batch_size': trial.suggest_int('batch_size', 10, 500),
-              'action_noise':trial.suggest_loguniform('action_noise', 1e-5, 1),
-              'state_noise_1': trial.suggest_loguniform('state_noise_1', 1e-5, 1),
-              'state_noise_2': trial.suggest_loguniform('state_noise_2', 1, 1e7),
+              'n_iter': trial.suggest_int('n_iter', 50, 350),
+              'batch_size': trial.suggest_int('batch_size', 50, 350),
+              'action_noise':trial.suggest_loguniform('action_noise', 0.01, 1),
+              'state_noise_1': trial.suggest_loguniform('state_noise_1', 0.01, 1),
+              'state_noise_2': trial.suggest_loguniform('state_noise_2', 1000, 1e7),
               }
     
    

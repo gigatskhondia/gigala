@@ -35,14 +35,14 @@ class Model:
         print('\nFinal Cantilever beam design:')
         plt.imshow(X) 
         plt.show(block=False)
-        plt.pause(0.1)
+        plt.pause(1.1)
         plt.close('all')
         
 def fast_stopt(args, x):
 
     reshape = lambda x: x.reshape(args.nely, args.nelx)
     objective_fn = lambda x: objective(reshape(x), args)
-#     constraint = lambda params: mean_density(reshape(params), args) - args.density
+    # constraint = lambda params: mean_density(reshape(params), args) - args.density
     constraint = lambda params: mean_density(reshape(params), args) 
     value = objective_fn(x)
     const = constraint(x)
@@ -59,7 +59,7 @@ class CantileverEnv(gym.Env):
         super().__init__()
         
         
-        self.rd=0
+        self.rd=-1
         self.args = get_args(*mbb_beam(rd=self.rd))
         
         DIM=self.args.nelx*self.args.nely+(self.args.nelx+1)*(self.args.nely+1)*2
@@ -68,13 +68,13 @@ class CantileverEnv(gym.Env):
         # self.action_space = spaces.Discrete(self.N_DISCRETE_ACTIONS)
         
         self.action_space = spaces.Box(low=0, high=1,
-                                       shape=(self.N_DISCRETE_ACTIONS,), dtype=np.float32)
+                                       shape=(self.N_DISCRETE_ACTIONS,), dtype=np.float64)
        
         self.low_state=np.array([0, 0])
         self.high_state=np.array([1, 1e7])
            
         self.observation_space = spaces.Box(low=self.low_state, high=self.high_state,
-                                            dtype=np.float32)
+                                            dtype=np.float64)
         
  
         self.x = anp.ones((self.args.nely, self.args.nelx))*self.args.density 
@@ -84,7 +84,7 @@ class CantileverEnv(gym.Env):
         self.reward=0
         self.step_=0
         self.needs_reset = True
-        self.y=np.array([0, 1e7])
+        self.y=np.array([1e-4, 1e7])
         self.seed()
         self.layer_dim=4
         self.n_layers=2
@@ -104,20 +104,21 @@ class CantileverEnv(gym.Env):
         self.tmp, self.const = fast_stopt(self.args, self.x)
         self.step_+=1
         
-        
-        self.reward=(1/self.tmp)**0.5
+        self.reward = (1/self.tmp)**2
+        # self.reward=(1/self.tmp)**0.5
         # self.reward += (1/self.tmp)**2
         # self.reward =(1/self.tmp)**2 - penalty
         # self.reward =-(self.tmp)**0.1*1e-4 + self.const*1e-2 if self.const<0.75 else -(self.tmp)**0.1*1e-4 - self.const*1e-2
                 
         done=False
             
-        if self.const>0.68:
+        if self.const>0.65:
 #             self.reward-=1
             done=True
-        
-#         if done:
-#             self.reward+=10.0   
+            
+        # if self.const>0.65 and 100<self.tmp<300:
+        #     self.reward+=1
+        #     done=True  
                  
         if self.step_>self.M.n*self.M.m:
             done=True    
@@ -145,7 +146,7 @@ class CantileverEnv(gym.Env):
         self.needs_reset = False
         self.step_=0
         
-        self.y=np.array([0, 1e7])
+        self.y=np.array([1e-4, 1e7])
         return self.y
        
 
