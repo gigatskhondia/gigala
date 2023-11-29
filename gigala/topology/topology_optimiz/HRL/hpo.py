@@ -3,6 +3,8 @@ import gym
 import numpy as np
 from HAC import HAC
 import optuna
+from asset.topology_optimization import CantileverEnv
+
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -15,7 +17,7 @@ def train(params):
     env_name ="T0-h-v1"
 
     save_episode = 20               # keep saving every n episodes
-    max_episodes = 1000         # max num of training episodes
+    max_episodes = params['max_episodes']        # max num of training episodes
     random_seed = params['random_seed']
     render = False
     
@@ -50,8 +52,8 @@ def train(params):
     exploration_action_noise = np.array([params['action_noise']])        
     exploration_state_noise = np.array([params['state_noise_1'], params['state_noise_2']])
 
-    goal_state=np.array([0.68, 300])
-    threshold=[0.2, 10]
+    goal_state=np.array([0.68, 60])
+    threshold=[0.05, 5]
     
     # HAC parameters:
     k_level = 2               # num of levels in hierarchy
@@ -103,22 +105,24 @@ def train(params):
 def objective(trial):
 
     params = {
-              'lr': trial.suggest_loguniform('lr', 1e-5, 1),
-              'layer_dim':trial.suggest_int("layer_dim", 2, 16),
+              'max_episodes':trial.suggest_int("max_episodes", 1000, 50000),
+               'random_seed': trial.suggest_int("random_seed", 0, 5),
+                'layer_dim':trial.suggest_int("layer_dim", 2, 16),
               'n_layers':trial.suggest_int("n_layers", 2, 8),
               'optimizer': trial.suggest_categorical("optimizer", ["Adam", 
                                                                    "RMSprop",
                                                                    "SGD"
                                                                    ]),
-              'random_seed': trial.suggest_int("random_seed", 0, 5),
+              'action_noise':trial.suggest_loguniform('action_noise', 0.01, 1),
+              'state_noise_1': trial.suggest_loguniform('state_noise_1', 0.01, 1),
+              'state_noise_2': trial.suggest_loguniform('state_noise_2', 1000, 1e7),
               'H':  trial.suggest_int("H", 3, 16),
               'lamda': trial.suggest_uniform('lamda', 0, 1),
               'gamma': trial.suggest_uniform('gamma', 0.95, 0.999),
               'n_iter': trial.suggest_int('n_iter', 50, 350),
-              'batch_size': trial.suggest_int('batch_size', 50, 350),
-              'action_noise':trial.suggest_loguniform('action_noise', 0.01, 1),
-              'state_noise_1': trial.suggest_loguniform('state_noise_1', 0.01, 1),
-              'state_noise_2': trial.suggest_loguniform('state_noise_2', 1000, 1e7),
+               'batch_size': trial.suggest_int('batch_size', 50, 350),
+                'lr': trial.suggest_loguniform('lr', 1e-5, 1)
+
               }
     
    
@@ -130,7 +134,7 @@ def objective(trial):
 
 
 study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler())
-study.optimize(objective, n_trials=40)
+study.optimize(objective, n_trials=100)
 
 
 best_trial = study.best_trial

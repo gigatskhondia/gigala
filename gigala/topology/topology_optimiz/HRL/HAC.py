@@ -1,8 +1,7 @@
 import torch
 import numpy as np
 from DDPG import DDPG
-from utils import ReplayBuffer
-from asset.topology_optimization import fast_stopt
+from utils import ReplayBuffer, fast_stopt
 
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -48,7 +47,8 @@ class HAC:
     def check_goal(self, state, goal, threshold, env):
         # if abs(state[0]-goal[0])> threshold[0] or state[1]>goal[1]:  
         if abs(state[0]-goal[0])> threshold[0] or abs(state[1]-goal[1])> threshold[1]:    
-  
+        # if abs(state[1]-goal[1])> threshold[1]:    
+    
             return False
         return True
        
@@ -103,8 +103,15 @@ class HAC:
                     
                     else:
                       action = np.random.uniform(self.action_clip_low, self.action_clip_high)
-                        
-                tmp=action*(1-env.x.reshape(len(action),))
+                     
+                # tmp=action*(1-env.x.reshape(len(action),)+1e-4)
+                
+                # penalty_coeff=0.6
+                # tmp=action*(1-penalty_coeff*env.x.reshape(len(action),)+1e-4)
+                
+                penalty_coeff=0.25
+                tmp=action-penalty_coeff*action*env.x.reshape(len(action),)
+                
                 next_state, rew, done, _ = env.step(tmp) # to make NN aware of the current topology 
                 # when altering boundary conditions and forces, do not change action values in those cells
                 

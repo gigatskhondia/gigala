@@ -194,3 +194,14 @@ def grad_solve_coo_entries(ans, a_entries, a_indices, b, sym_pos=False):
 autograd.extend.defvjp(solve_coo, grad_solve_coo_entries,
                        lambda: print('err: gradient undefined'),
                        lambda: print('err: gradient not implemented'))
+
+
+def fast_stopt(args, x):
+
+    reshape = lambda x: x.reshape(args.nely, args.nelx)
+    objective_fn = lambda x: objective(reshape(x), args)
+    # constraint = lambda params: mean_density(reshape(params), args) - args.density
+    constraint = lambda params: mean_density(reshape(params), args) 
+    value = objective_fn(x)
+    const = constraint(x)
+    return value, const

@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt  
-from utils import get_args, objective, mean_density, mbb_beam                               
+# from utils import get_args, objective, mean_density, mbb_beam   
+from utils import *                          
 import gym
 from gym import spaces
 import random
@@ -8,6 +9,7 @@ import autograd, autograd.core, autograd.extend, autograd.tracer
 import autograd.numpy as anp  
 import math
 from gym.utils import seeding
+
 
 class Model:
     def __init__(self, x):
@@ -24,29 +26,19 @@ class Model:
         
     def action_space_(self, action, X):
         x,y=self.actions_dic[action]
-        penalty=(X[x][y]==1)
+        # penalty=(X[x][y]==1)
         X[x][y]=1
-        if penalty:
-            return 1e-7
-        return 0
+        # if penalty:
+        #     return 1e-7
+        # return 0
         
     def draw(self,X):  
         plt.figure(dpi=50) 
         print('\nFinal Cantilever beam design:')
         plt.imshow(X) 
         plt.show(block=False)
-        plt.pause(1.1)
+        plt.pause(0.1)
         plt.close('all')
-        
-def fast_stopt(args, x):
-
-    reshape = lambda x: x.reshape(args.nely, args.nelx)
-    objective_fn = lambda x: objective(reshape(x), args)
-    # constraint = lambda params: mean_density(reshape(params), args) - args.density
-    constraint = lambda params: mean_density(reshape(params), args) 
-    value = objective_fn(x)
-    const = constraint(x)
-    return value, const
 
 
 class CantileverEnv(gym.Env):
@@ -59,7 +51,7 @@ class CantileverEnv(gym.Env):
         super().__init__()
         
         
-        self.rd=-1
+        self.rd=0
         self.args = get_args(*mbb_beam(rd=self.rd))
         
         DIM=self.args.nelx*self.args.nely+(self.args.nelx+1)*(self.args.nely+1)*2
@@ -85,10 +77,10 @@ class CantileverEnv(gym.Env):
         self.step_=0
         self.needs_reset = True
         self.y=np.array([1e-4, 1e7])
-        self.seed()
         self.layer_dim=4
         self.n_layers=2
         self.optimizer='Adam'
+        self.seed()
         
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -97,23 +89,24 @@ class CantileverEnv(gym.Env):
     def step(self, action):
         self.args = get_args(*mbb_beam(rd=self.rd))
         
+        # print(action)
         act=np.argmax(action)
      
             
-        penalty=self.M.action_space_(act, self.x)
+        self.M.action_space_(act, self.x)
         
         self.tmp, self.const = fast_stopt(self.args, self.x)
         self.step_+=1
         
-        self.reward = (1/self.tmp)**2
-        # self.reward=(1/self.tmp)**0.5
+        # self.reward = (1/self.tmp)**2 if self.const <0.7 else (1/self.tmp)**2-(self.const-0.7)
+        self.reward=(1/self.tmp)**0.5
         # self.reward += (1/self.tmp)**2
         # self.reward =(1/self.tmp)**2 - penalty
         # self.reward =-(self.tmp)**0.1*1e-4 + self.const*1e-2 if self.const<0.75 else -(self.tmp)**0.1*1e-4 - self.const*1e-2
                 
         done=False
             
-        if self.const>0.65:
+        if self.const>0.68:
 #             self.reward-=1
             done=True
             
@@ -156,4 +149,3 @@ class CantileverEnv(gym.Env):
 
     def close(self):
         pass
-        

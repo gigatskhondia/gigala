@@ -2,6 +2,7 @@ import torch
 import gym
 import numpy as np
 from HAC import HAC
+from asset.topology_optimization import CantileverEnv
 
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -11,14 +12,14 @@ def train():
     env_name ="T0-h-v1"
 
     save_episode = 200               # keep saving every n episodes
-    max_episodes =  1000          # max num of training episodes
-    random_seed =  5
+    max_episodes =  1_000         # max num of training episodes
+    random_seed =  29
     render = False
     
     env = gym.make(env_name)
-    env.layer_dim=2
-    env.n_layers=8
-    env.optimizer='Adam'
+    env.layer_dim=5
+    env.n_layers=9
+    env.optimizer='SGD'
     state_dim = env.observation_space.shape[0]
     action_dim = env.N_DISCRETE_ACTIONS
     
@@ -43,22 +44,22 @@ def train():
     state_clip_low = np.array([0, 0])
     state_clip_high = np.array([1, 1e7])
 
-    exploration_action_noise = np.array([0.05896732710057144])        
-    exploration_state_noise = np.array([ 0.23419240446172046,    1596373.7031755128])
+    exploration_action_noise = np.array([0.0004146817262490517])        
+    exploration_state_noise = np.array([0.07130856236506479,  9607757.317545395])
 
-    goal_state=np.array([0.6, 200])
-    threshold=[0.2, 100]
+    goal_state=np.array([0.68, 60])
+    threshold=[0.05, 5]
 
     # HAC parameters:
     k_level = 2               # num of levels in hierarchy
-    H =12        # time horizon to achieve subgoal
-    lamda =  0.16722350293341795      # subgoal testing parameter
+    H = 29           # time horizon to achieve subgoal
+    lamda =  0.39942213810680444           # subgoal testing parameter
     
     # DDPG parameters:
-    gamma =0.9555434687494773        # discount factor for future rewards
-    n_iter =    102    # update policy n_iter times in one DDPG update
-    batch_size =    156  # num of transitions sampled from replay buffer
-    lr = 0.006340634457269721
+    gamma = 0.9953326938949868         # discount factor for future rewards
+    n_iter =   319       # update policy n_iter times in one DDPG update
+    batch_size =    178    # num of transitions sampled from replay buffer
+    lr = 0.00016167402851101703
     
     # save trained models
     directory = "./preTrained/{}/{}level/".format(env_name, k_level) 
