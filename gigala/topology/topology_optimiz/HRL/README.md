@@ -1,4 +1,4 @@
-### work in progress, the environment not fully solved yet!
+### TODO: work in progress, the environment not fully solved yet!
 
 
 # Hierarchical reinforcement learning for topology optimization
