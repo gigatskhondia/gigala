@@ -107,7 +107,7 @@ def objective(trial):
     params = {
               'max_episodes':trial.suggest_int("max_episodes", 500, 30000),
                'random_seed': trial.suggest_int("random_seed", 0, 5),
-                'layer_dim':trial.suggest_int("layer_dim", 2, 16),
+               'layer_dim':trial.suggest_int("layer_dim", 2, 16),
               'n_layers':trial.suggest_int("n_layers", 2, 8),
               'optimizer': trial.suggest_categorical("optimizer", ["Adam", 
                                                                    "RMSprop",
