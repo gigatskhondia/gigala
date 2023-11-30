@@ -37,7 +37,7 @@ class Model:
         print('\nFinal Cantilever beam design:')
         plt.imshow(X) 
         plt.show(block=False)
-        plt.pause(0.1)
+        plt.pause(3)
         plt.close('all')
 
 

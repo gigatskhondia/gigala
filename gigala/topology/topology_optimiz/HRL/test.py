@@ -15,12 +15,12 @@ def test():
 
     save_episode = 20               # keep saving every n episodes
     max_episodes =  10         # max num of training episodes
-    random_seed =  0
+    random_seed =  1
     render = False
     
     env = gym.make(env_name)
     env.layer_dim=3
-    env.n_layers=6
+    env.n_layers=7
     env.optimizer='SGD'
     state_dim = env.observation_space.shape[0]
     action_dim = env.N_DISCRETE_ACTIONS
@@ -46,22 +46,22 @@ def test():
     state_clip_low = np.array([0, 0])
     state_clip_high = np.array([1, 1e7])
 
-    exploration_action_noise = np.array([0.04793770195933823])        
-    exploration_state_noise = np.array([0.013376510739810003,  6514239.503997323])
+    exploration_action_noise = np.array([0.043449180523916685])        
+    exploration_state_noise = np.array([0.038900321307539745,  3009039.7706025373])
 
     goal_state=np.array([0.68, 60])
     threshold=[0.05, 5]
 
     # HAC parameters:
     k_level = 2               # num of levels in hierarchy
-    H = 11           # time horizon to achieve subgoal
-    lamda =  0.91237801995727          # subgoal testing parameter
+    H = 14           # time horizon to achieve subgoal
+    lamda = 0.9952261136526741         # subgoal testing parameter
     
     # DDPG parameters:
-    gamma =  0.9899357606936956     # discount factor for future rewards
-    n_iter =    350       # update policy n_iter times in one DDPG update
-    batch_size =      350   # num of transitions sampled from replay buffer
-    lr =  9.55696982908732e-05
+    gamma = 0.9963626260278423    # discount factor for future rewards
+    n_iter =    344      # update policy n_iter times in one DDPG update
+    batch_size =       289  # num of transitions sampled from replay buffer
+    lr =  0.0006659345143647036
     
     # save trained models
     directory = "./preTrained/{}/{}level/".format(env_name, k_level) 
