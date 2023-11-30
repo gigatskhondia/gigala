@@ -1,13 +1,10 @@
 import matplotlib.pyplot as plt  
-# from utils import get_args, objective, mean_density, mbb_beam   
 from utils import *                          
 import gym
 from gym import spaces
 import random
 import numpy as np
-import autograd, autograd.core, autograd.extend, autograd.tracer  
 import autograd.numpy as anp  
-import math
 from gym.utils import seeding
 
 

@@ -2,8 +2,7 @@ import torch
 import gym
 import numpy as np
 from HAC import HAC
-from asset.topology_optimization import CantileverEnv
-
+import asset
 
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")

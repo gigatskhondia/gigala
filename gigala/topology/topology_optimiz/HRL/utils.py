@@ -1,5 +1,4 @@
 import numpy as np
-import autograd, autograd.core, autograd.extend, autograd.tracer  
 import autograd.numpy as anp      
 import scipy, scipy.ndimage, scipy.sparse, scipy.sparse.linalg  
 
@@ -88,14 +87,12 @@ def objective(x, args, volume_contraint=False, use_filter=True):
     c      = compliance(x_phys, u, ke, **kwargs)
     return c
 
-@autograd.extend.primitive
 def gaussian_filter(x, width): # 2D gaussian blur/filter
     return scipy.ndimage.gaussian_filter(x, width, mode='reflect')
 
 def _gaussian_filter_vjp(ans, x, width): # gives the gradient of orig. function w.r.t. x
     del ans, x  # unused
     return lambda g: gaussian_filter(g, width)
-autograd.extend.defvjp(gaussian_filter, _gaussian_filter_vjp)
 
 def compliance(x_phys, u, ke, *, penal=3, e_min=1e-9, e_0=1):
     nely, nelx = x_phys.shape
@@ -112,7 +109,6 @@ def compliance(x_phys, u, ke, *, penal=3, e_min=1e-9, e_0=1):
     ce = anp.einsum('ijk,ijk->jk', u_selected, ke_u)
     C = young_modulus(x_phys, e_0, e_min, p=penal) * ce.T
     return anp.sum(C)
-    # return anp.mean(C)/anp.max(C)
 
 def get_stiffness_matrix(e, nu):  # e=young's modulus, nu=poisson coefficient
     k = anp.array([1/2-nu/6, 1/8+nu/8, -1/4-nu/12, -1/8+3*nu/8,
@@ -125,7 +121,6 @@ def get_stiffness_matrix(e, nu):  # e=young's modulus, nu=poisson coefficient
                                [k[5], k[4], k[3], k[2], k[1], k[0], k[7], k[6]],
                                [k[6], k[3], k[4], k[1], k[2], k[7], k[0], k[5]],
                                [k[7], k[2], k[1], k[4], k[3], k[6], k[5], k[0]]])
-    
     
 def get_k(stiffness, ke):
     # Constructs sparse stiffness matrix k (used in the displace fn)
@@ -178,7 +173,6 @@ def _get_solver(a_entries, a_indices, size, sym_pos):
     a = scipy.sparse.coo_matrix((a_entries, a_indices), shape=(size,)*2).tocsc()
     return scipy.sparse.linalg.splu(a).solve
 
-@autograd.primitive
 def solve_coo(a_entries, a_indices, b, sym_pos=False):
     solver = _get_solver(a_entries, a_indices, b.size, sym_pos)
     return solver(b)
@@ -190,11 +184,6 @@ def grad_solve_coo_entries(ans, a_entries, a_indices, b, sym_pos=False):
         i, j = a_indices
         return -lambda_[i] * ans[j]
     return jvp
-
-autograd.extend.defvjp(solve_coo, grad_solve_coo_entries,
-                       lambda: print('err: gradient undefined'),
-                       lambda: print('err: gradient not implemented'))
-
 
 def fast_stopt(args, x):
 

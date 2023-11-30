@@ -2,7 +2,8 @@ import torch
 import gym
 import numpy as np
 from HAC import HAC
-from asset.topology_optimization import CantileverEnv
+import asset
+# from asset.topology_optimization import CantileverEnv
 
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -12,7 +13,7 @@ def train():
     env_name ="T0-h-v1"
 
     save_episode = 200               # keep saving every n episodes
-    max_episodes =  1476       # max num of training episodes
+    max_episodes =  1860       # max num of training episodes
     random_seed =  2
     render = False
     
