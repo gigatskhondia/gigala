@@ -45,22 +45,22 @@ def test():
     state_clip_low = np.array([0, 0])
     state_clip_high = np.array([1, 1e7])
 
-    exploration_action_noise = np.array([0.039504566273134076])        
-    exploration_state_noise = np.array([0.04246504596942574, 2466164.392626233])
+    exploration_action_noise = np.array([0.0206445943048355])        
+    exploration_state_noise = np.array([ 0.02868889730207201, 2620170.082963944])
 
     goal_state=np.array([0.68, 60])
     threshold=[0.05, 5]
 
     # HAC parameters:
     k_level = 2               # num of levels in hierarchy
-    H = 8          # time horizon to achieve subgoal
-    lamda = 0.9393433901885634        # subgoal testing parameter
+    H = 11       # time horizon to achieve subgoal
+    lamda =  0.9453109199655714        # subgoal testing parameter
     
     # DDPG parameters:
-    gamma = 0.9932572258312962    # discount factor for future rewards
-    n_iter =    180      # update policy n_iter times in one DDPG update
-    batch_size =       303  # num of transitions sampled from replay buffer
-    lr =  0.0012018826661612284
+    gamma = 0.992256316386673    # discount factor for future rewards
+    n_iter =     186     # update policy n_iter times in one DDPG update
+    batch_size =       256  # num of transitions sampled from replay buffer
+    lr =  0.0032967527995782626
     
     # save trained models
     directory = "./preTrained/{}/{}level/".format(env_name, k_level) 
