@@ -17,14 +17,20 @@ def train(params):
     env_name ="T0-h-v1"
 
     save_episode = 20               # keep saving every n episodes
-    max_episodes = params['max_episodes']        # max num of training episodes
-    random_seed = params['random_seed']
+    # max_episodes = params['max_episodes']        # max num of training episodes
+    max_episodes = 1000 
+    # random_seed = params['random_seed']
+    random_seed=2
     render = False
     
     env = gym.make(env_name)
-    env.layer_dim=params['layer_dim']
-    env.n_layers=params['n_layers']
-    env.optimizer=params['optimizer']
+    # env.layer_dim=params['layer_dim']
+    env.layer_dim=3
+    # env.n_layers=params['n_layers']
+    env.n_layers=6
+    # env.optimizer=params['optimizer']
+    env.optimizer='SGD'
+
     state_dim = env.observation_space.shape[0]
     action_dim = env.N_DISCRETE_ACTIONS
     
@@ -52,19 +58,25 @@ def train(params):
     exploration_action_noise = np.array([params['action_noise']])        
     exploration_state_noise = np.array([params['state_noise_1'], params['state_noise_2']])
 
-    goal_state=np.array([0.68, 60])
+    goal_state=np.array([0.68, 20])
     threshold=[0.05, 5]
     
     # HAC parameters:
     k_level = 2               # num of levels in hierarchy
-    H = params['H']               # time horizon to achieve subgoal
-    lamda = params['lamda']               # subgoal testing parameter
+    # H = params['H']               # time horizon to achieve subgoal
+    H = 11
+    # lamda = params['lamda']               # subgoal testing parameter
+    lamda = 0.9453109199655714
     
     # DDPG parameters:
-    gamma = params['gamma']                # discount factor for future rewards
-    n_iter = params['n_iter']              # update policy n_iter times in one DDPG update
-    batch_size = params['batch_size']         # num of transitions sampled from replay buffer
-    lr = params['lr']
+    # gamma = params['gamma']                # discount factor for future rewards
+    gamma = 0.992256316386673 
+    # n_iter = params['n_iter']              # update policy n_iter times in one DDPG update
+    n_iter = 186 
+    # batch_size = params['batch_size']         # num of transitions sampled from replay buffer
+    batch_size =256
+    # lr = params['lr']
+    lr= 0.0032967527995782626
     
     # save trained models
     directory = "./preTrained/{}/{}level/".format(env_name, k_level) 
@@ -105,23 +117,23 @@ def train(params):
 def objective(trial):
 
     params = {
-              'max_episodes':trial.suggest_int("max_episodes", 1000, 3000),
-               'random_seed': trial.suggest_int("random_seed", 0, 5),
-               'layer_dim':trial.suggest_int("layer_dim", 2, 16),
-              'n_layers':trial.suggest_int("n_layers", 2, 8),
-              'optimizer': trial.suggest_categorical("optimizer", ["Adam", 
-                                                                   "RMSprop",
-                                                                   "SGD"
-                                                                   ]),
+            #   'max_episodes':trial.suggest_int("max_episodes", 1000, 3000),
+            #    'random_seed': trial.suggest_int("random_seed", 0, 5),
+            #    'layer_dim':trial.suggest_int("layer_dim", 2, 16),
+            #   'n_layers':trial.suggest_int("n_layers", 2, 8),
+            #   'optimizer': trial.suggest_categorical("optimizer", ["Adam", 
+                                                                #    "RMSprop",
+                                                                #    "SGD"
+                                                                #    ]),
               'action_noise':trial.suggest_loguniform('action_noise', 0.01, 1),
               'state_noise_1': trial.suggest_loguniform('state_noise_1', 0.01, 1),
               'state_noise_2': trial.suggest_loguniform('state_noise_2', 1000, 1e7),
-              'H':  trial.suggest_int("H", 3, 16),
-              'lamda': trial.suggest_uniform('lamda', 0, 1),
-              'gamma': trial.suggest_uniform('gamma', 0.95, 0.999),
-              'n_iter': trial.suggest_int('n_iter', 50, 350),
-               'batch_size': trial.suggest_int('batch_size', 50, 350),
-                'lr': trial.suggest_loguniform('lr', 1e-5, 1)
+            #   'H':  trial.suggest_int("H", 3, 16),
+            #   'lamda': trial.suggest_uniform('lamda', 0, 1),
+            #   'gamma': trial.suggest_uniform('gamma', 0.95, 0.999),
+            #   'n_iter': trial.suggest_int('n_iter', 50, 350),
+            #    'batch_size': trial.suggest_int('batch_size', 50, 350),
+            #     'lr': trial.suggest_loguniform('lr', 1e-5, 1)
 
               }
     

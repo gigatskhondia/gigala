@@ -48,7 +48,7 @@ def test():
     exploration_action_noise = np.array([0.0206445943048355])        
     exploration_state_noise = np.array([ 0.02868889730207201, 2620170.082963944])
 
-    goal_state=np.array([0.68, 60])
+    goal_state=np.array([0.68, 20])
     threshold=[0.05, 5]
 
     # HAC parameters:

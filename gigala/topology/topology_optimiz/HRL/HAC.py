@@ -104,16 +104,8 @@ class HAC:
                     else:
                       action = np.random.uniform(self.action_clip_low, self.action_clip_high)
                      
-                # tmp=action*(1-env.x.reshape(len(action),)+1e-4)
                 
-                # penalty_coeff=0.6
-                # tmp=action*(1-penalty_coeff*env.x.reshape(len(action),)+1e-4) # to give the agent an ability to do the same actions 
-                
-                penalty_coeff=0.25
-                tmp=action-penalty_coeff*action*env.x.reshape(len(action),) # to give the agent an ability to do the same actions 
-                
-                next_state, rew, done, _ = env.step(tmp) # to make NN aware of the current topology 
-                # when altering boundary conditions and forces, do not change action values in those cells
+                next_state, rew, done, _ = env.step(action) 
                 
                 if self.render:
                     

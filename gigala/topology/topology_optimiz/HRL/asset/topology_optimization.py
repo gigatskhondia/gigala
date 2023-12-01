@@ -84,6 +84,14 @@ class CantileverEnv(gym.Env):
         return [seed]   
     
     def step(self, action):
+        
+        # action=action*(1-env.x.reshape(len(action),)+1e-4)
+        # when altering boundary conditions and forces, do not change action values in those cells
+
+        # to give the agent an ability to do the same actions
+        self.penalty_coeff=0.10 # 0.25
+        action=action*(1-self.penalty_coeff*self.x.reshape(len(action),))
+        
         self.args = get_args(*mbb_beam(rd=self.rd))
         
         # print(action)
