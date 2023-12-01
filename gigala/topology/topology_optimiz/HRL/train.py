@@ -12,7 +12,7 @@ def train():
     env_name ="T0-h-v1"
 
     save_episode = 200               # keep saving every n episodes
-    max_episodes = 1000      # max num of training episodes
+    max_episodes = 1000     # max num of training episodes
     random_seed =  2
     render = False
     
@@ -44,8 +44,8 @@ def train():
     state_clip_low = np.array([0, 0])
     state_clip_high = np.array([1, 1e7])
 
-    exploration_action_noise = np.array([0.0206445943048355])        
-    exploration_state_noise = np.array([ 0.02868889730207201, 2620170.082963944])
+    exploration_action_noise = np.array([0.010067038511906278])        
+    exploration_state_noise = np.array([ 0.021084028625440634, 1634.5629584568796])
 
     goal_state=np.array([0.68, 20])
     threshold=[0.05, 5]
