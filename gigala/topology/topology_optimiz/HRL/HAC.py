@@ -45,10 +45,7 @@ class HAC:
         self.exploration_state_noise = exploration_state_noise
     
     def check_goal(self, state, goal, threshold, env):
-        # if abs(state[0]-goal[0])> threshold[0] or state[1]>goal[1]:  
-        if abs(state[0]-goal[0])> threshold[0] or abs(state[1]-goal[1])> threshold[1]:    
-        # if abs(state[1]-goal[1])> threshold[1]:    
-    
+        if abs(state[0]-goal[0])> threshold[0] or abs(state[1]-goal[1])> threshold[1]:        
             return False
         return True
        
@@ -100,7 +97,6 @@ class HAC:
                     if np.random.random_sample() > 0.2:
                       action = action + np.array([np.random.normal(0, self.exploration_action_noise )[0] for x in range(env.N_DISCRETE_ACTIONS)])
                       action = action.clip(self.action_clip_low, self.action_clip_high)
-                    
                     else:
                       action = np.random.uniform(self.action_clip_low, self.action_clip_high)
                      
@@ -125,11 +121,9 @@ class HAC:
                 self.replay_buffer[i_level].add((state, action, 10.0, next_state, goal, 0.0, float(done)))
             else:
                 self.replay_buffer[i_level].add((state, action, -1.0, next_state, goal, self.gamma, float(done)))
-                # self.replay_buffer[i_level].add((state, action, rew, next_state, goal, self.gamma, float(done)))
 
             # copy for goal transition
             goal_transitions.append([state, action, -1.0, next_state, None, self.gamma, float(done)])
-            # goal_transitions.append([state, action, rew, next_state, None, self.gamma, float(done)])
 
             state = next_state
             

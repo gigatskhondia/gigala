@@ -53,7 +53,7 @@ def test():
 
     # HAC parameters:
     k_level = 2               # num of levels in hierarchy
-    H = 11       # time horizon to achieve subgoal
+    H = 5       # time horizon to achieve subgoal
     lamda =  0.9453109199655714        # subgoal testing parameter
     
     # DDPG parameters:
