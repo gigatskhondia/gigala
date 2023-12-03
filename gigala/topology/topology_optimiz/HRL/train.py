@@ -11,9 +11,9 @@ def train():
     #################### Hyperparameters ####################
     env_name ="T0-h-v1"
 
-    save_episode = 200               # keep saving every n episodes
+    save_episode = 100              # keep saving every n episodes
     max_episodes = 1000     # max num of training episodes
-    random_seed =  2
+    random_seed =  False
     render = False
     
     env = gym.make(env_name)
@@ -57,8 +57,8 @@ def train():
     
     # DDPG parameters:
     gamma = 0.992256316386673    # discount factor for future rewards
-    n_iter =     186     # update policy n_iter times in one DDPG update
-    batch_size =       256  # num of transitions sampled from replay buffer
+    n_iter =    186     # update policy n_iter times in one DDPG update
+    batch_size =  256  # num of transitions sampled from replay buffer
     lr =  0.0032967527995782626
     
     # save trained models
@@ -67,11 +67,11 @@ def train():
     #########################################################
     
     
-    # if random_seed:
-    print("Random Seed: {}".format(random_seed))
-    env.seed(random_seed)
-    torch.manual_seed(random_seed)
-    np.random.seed(random_seed)
+    if random_seed:
+        print("Random Seed: {}".format(random_seed))
+        env.seed(random_seed)
+        torch.manual_seed(random_seed)
+        np.random.seed(random_seed)
     
     # creating HAC agent and setting parameters
     agent = HAC(k_level, H, state_dim, action_dim, render, threshold, 

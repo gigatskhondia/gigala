@@ -18,9 +18,9 @@ def train(params):
 
     save_episode = 20               # keep saving every n episodes
     # max_episodes = params['max_episodes']        # max num of training episodes
-    max_episodes = 3_000 
+    max_episodes = 1_000 
     # random_seed = params['random_seed']
-    random_seed=2
+    random_seed=False
     render = False
     
     env = gym.make(env_name)
@@ -84,11 +84,11 @@ def train(params):
     #########################################################
     
     
-    # if random_seed:
-    print("Random Seed: {}".format(random_seed))
-    env.seed(random_seed)
-    torch.manual_seed(random_seed)
-    np.random.seed(random_seed)
+    if random_seed:
+        print("Random Seed: {}".format(random_seed))
+        env.seed(random_seed)
+        torch.manual_seed(random_seed)
+        np.random.seed(random_seed)
     
     # creating HAC agent and setting parameters
     agent = HAC(k_level, H, state_dim, action_dim, render, threshold, 
