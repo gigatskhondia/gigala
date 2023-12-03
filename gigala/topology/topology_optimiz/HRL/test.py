@@ -54,7 +54,7 @@ def test():
     # HAC parameters:
     k_level = 2               # num of levels in hierarchy
     H = 5       # time horizon to achieve subgoal
-    lamda =  0.937850390154862       # subgoal testing parameter
+    lamda =   0.937850390154862       # subgoal testing parameter
     
     # DDPG parameters:
     gamma = 0.992256316386673    # discount factor for future rewards

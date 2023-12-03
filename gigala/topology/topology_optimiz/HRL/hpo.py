@@ -18,7 +18,7 @@ def train(params):
 
     save_episode = 20               # keep saving every n episodes
     # max_episodes = params['max_episodes']        # max num of training episodes
-    max_episodes = 1000 
+    max_episodes = 3_000 
     # random_seed = params['random_seed']
     random_seed=2
     render = False
@@ -119,8 +119,8 @@ def objective(trial):
     params = {
             #   'max_episodes':trial.suggest_int("max_episodes", 1000, 1500),
             #    'random_seed': trial.suggest_int("random_seed", 0, 5),
-               'layer_dim':trial.suggest_int("layer_dim", 32, 64),
-              'n_layers':trial.suggest_int("n_layers", 8, 16),
+               'layer_dim':trial.suggest_int("layer_dim", 2, 16),
+              'n_layers':trial.suggest_int("n_layers", 2, 16),
               'optimizer': trial.suggest_categorical("optimizer", ["Adam", 
                                                                    "RMSprop",
                                                                    "SGD"
