@@ -18,7 +18,7 @@ def train(params):
 
     save_episode = 20               # keep saving every n episodes
     # max_episodes = params['max_episodes']        # max num of training episodes
-    max_episodes = 1_000 
+    max_episodes = 2_000 
     # random_seed = params['random_seed']
     random_seed=False
     render = False

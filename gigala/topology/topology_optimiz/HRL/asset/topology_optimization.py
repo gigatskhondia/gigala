@@ -89,7 +89,7 @@ class CantileverEnv(gym.Env):
         # when altering boundary conditions and forces, do not change action values in those cells
 
         # to give the agent an ability to do the same actions
-        self.penalty_coeff= 0.10 # 0.25
+        self.penalty_coeff= 0.3
         action=action*(1-self.penalty_coeff*self.x.reshape(len(action),))
         
         self.args = get_args(*mbb_beam(rd=self.rd))
