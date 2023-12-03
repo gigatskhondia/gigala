@@ -44,8 +44,8 @@ def train():
     state_clip_low = np.array([0, 0])
     state_clip_high = np.array([1, 1e7])
 
-    exploration_action_noise = np.array([0.010067038511906278])        
-    exploration_state_noise = np.array([ 0.021084028625440634, 1634.5629584568796])
+    exploration_action_noise = np.array([ 0.014616008674085107])        
+    exploration_state_noise = np.array([0.30880493764961575, 2460.954864193238])
 
     goal_state=np.array([0.68, 20])
     threshold=[0.05, 5]
@@ -53,7 +53,7 @@ def train():
     # HAC parameters:
     k_level = 2               # num of levels in hierarchy
     H = 5       # time horizon to achieve subgoal
-    lamda =  0.9453109199655714        # subgoal testing parameter
+    lamda =  0.937850390154862       # subgoal testing parameter
     
     # DDPG parameters:
     gamma = 0.992256316386673    # discount factor for future rewards

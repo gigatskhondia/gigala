@@ -119,8 +119,8 @@ def objective(trial):
     params = {
             #   'max_episodes':trial.suggest_int("max_episodes", 1000, 1500),
             #    'random_seed': trial.suggest_int("random_seed", 0, 5),
-               'layer_dim':trial.suggest_int("layer_dim", 2, 16),
-              'n_layers':trial.suggest_int("n_layers", 2, 8),
+               'layer_dim':trial.suggest_int("layer_dim", 32, 64),
+              'n_layers':trial.suggest_int("n_layers", 8, 16),
               'optimizer': trial.suggest_categorical("optimizer", ["Adam", 
                                                                    "RMSprop",
                                                                    "SGD"
@@ -146,7 +146,7 @@ def objective(trial):
 
 
 study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler())
-study.optimize(objective, n_trials=300)
+study.optimize(objective, n_trials=100)
 
 
 best_trial = study.best_trial
