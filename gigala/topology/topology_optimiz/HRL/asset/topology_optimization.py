@@ -85,7 +85,7 @@ class CantileverEnv(gym.Env):
     
     def step(self, action):
         
-        # action=action*(1-env.x.reshape(len(action),)+1e-4)
+        # action=action*(1-self.x.reshape(len(action),)+1e-4)
         # when altering boundary conditions and forces, do not change action values in those cells
 
         # to give the agent an ability to do the same actions

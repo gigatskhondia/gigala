@@ -18,7 +18,7 @@ def train(params):
 
     save_episode = 20               # keep saving every n episodes
     # max_episodes = params['max_episodes']        # max num of training episodes
-    max_episodes = 2_000 
+    max_episodes = 1_000 
     # random_seed = params['random_seed']
     random_seed=False
     render = False
@@ -42,15 +42,19 @@ def train(params):
     
     # primitive action bounds and offset
     action_bounds = env.action_space.high[0]
-    action_offset = np.array([0.5 for x in range(env.N_DISCRETE_ACTIONS)])
+    # action_offset = np.array([0.5 for x in range(env.N_DISCRETE_ACTIONS)])
+    action_offset = np.array([0.0 for x in range(env.N_DISCRETE_ACTIONS)])
+
     action_offset = torch.FloatTensor(action_offset.reshape(1, -1)).to(device)
     action_clip_low = np.array([0 for x in range(env.N_DISCRETE_ACTIONS)])
     action_clip_high = np.array([1 for x in range(env.N_DISCRETE_ACTIONS)])
     
     # state bounds and offset 
-    state_bounds_np = np.array([0.5, 0.5e7])
+    # state_bounds_np = np.array([0.5, 0.5e7])
+    state_bounds_np = np.array([1, 1e7])
     state_bounds = torch.FloatTensor(state_bounds_np.reshape(1, -1)).to(device)
-    state_offset =  np.array([0.5, 0.5e7])
+    # state_offset =  np.array([0.5, 0.5e7])
+    state_offset =  np.array([0, 0])
     state_offset = torch.FloatTensor(state_offset.reshape(1, -1)).to(device)
     state_clip_low = np.array([0, 0])
     state_clip_high = np.array([1, 1e7])

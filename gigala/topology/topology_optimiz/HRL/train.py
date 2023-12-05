@@ -12,13 +12,13 @@ def train():
     env_name ="T0-h-v1"
 
     save_episode = 100              # keep saving every n episodes
-    max_episodes = 2_000     # max num of training episodes
+    max_episodes = 500     # max num of training episodes
     random_seed =  False
     render = False
     
     env = gym.make(env_name)
-    env.layer_dim=3
-    env.n_layers=6
+    env.layer_dim=6
+    env.n_layers=11
     env.optimizer='SGD'
     state_dim = env.observation_space.shape[0]
     action_dim = env.N_DISCRETE_ACTIONS
@@ -31,35 +31,39 @@ def train():
     
     # primitive action bounds and offset
     action_bounds = env.action_space.high[0]
-    action_offset = np.array([0.5 for x in range(env.N_DISCRETE_ACTIONS)])
+    # action_offset = np.array([0.5 for x in range(env.N_DISCRETE_ACTIONS)])
+    action_offset = np.array([0.0 for x in range(env.N_DISCRETE_ACTIONS)])
+
     action_offset = torch.FloatTensor(action_offset.reshape(1, -1)).to(device)
     action_clip_low = np.array([0 for x in range(env.N_DISCRETE_ACTIONS)])
     action_clip_high = np.array([1 for x in range(env.N_DISCRETE_ACTIONS)])
     
     # state bounds and offset 
-    state_bounds_np = np.array([0.5, 0.5e7])
+    # state_bounds_np = np.array([0.5, 0.5e7])
+    state_bounds_np = np.array([1, 1e7])
     state_bounds = torch.FloatTensor(state_bounds_np.reshape(1, -1)).to(device)
-    state_offset =  np.array([0.5, 0.5e7])
+    # state_offset =  np.array([0.5, 0.5e7])
+    state_offset =  np.array([0, 0])
     state_offset = torch.FloatTensor(state_offset.reshape(1, -1)).to(device)
     state_clip_low = np.array([0, 0])
     state_clip_high = np.array([1, 1e7])
 
-    exploration_action_noise = np.array([0.010067038511906278])        
-    exploration_state_noise = np.array([ 0.021084028625440634, 1634.5629584568796])
+    exploration_action_noise = np.array([0.015206663469846475])        
+    exploration_state_noise = np.array([ 0.29401978492892794, 9925.24382572281])
 
     goal_state=np.array([0.68, 20])
     threshold=[0.05, 5]
 
     # HAC parameters:
     k_level = 2               # num of levels in hierarchy
-    H = 5       # time horizon to achieve subgoal
-    lamda =  0.9453109199655714        # subgoal testing parameter
+    H = 6       # time horizon to achieve subgoal
+    lamda =  0.5890508744278602      # subgoal testing parameter
     
     # DDPG parameters:
-    gamma = 0.992256316386673    # discount factor for future rewards
-    n_iter =     186     # update policy n_iter times in one DDPG update
-    batch_size =       256  # num of transitions sampled from replay buffer
-    lr =  0.0032967527995782626
+    gamma = 0.9972267222968305    # discount factor for future rewards
+    n_iter =     80     # update policy n_iter times in one DDPG update
+    batch_size =       117  # num of transitions sampled from replay buffer
+    lr =  0.6492500586854221
     
     # save trained models
     directory = "./preTrained/{}/{}level/".format(env_name, k_level) 

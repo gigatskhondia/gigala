@@ -65,7 +65,7 @@ class HAC:
             
             action = self.HAC[i_level].select_action(state, goal) 
           
-              
+            # print(next_state)  
             #   <================ high level policy ================>
             if i_level > 0:
                 # add noise or take random action if not subgoal testing
@@ -100,7 +100,7 @@ class HAC:
                     else:
                       action = np.random.uniform(self.action_clip_low, self.action_clip_high)
                      
-                
+                # print(action)
                 next_state, rew, done, _ = env.step(action) 
                 
                 if self.render:
