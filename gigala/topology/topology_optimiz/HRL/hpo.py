@@ -150,7 +150,7 @@ def objective(trial):
 
 
 study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler())
-study.optimize(objective, n_trials=100)
+study.optimize(objective, n_trials=300)
 
 
 best_trial = study.best_trial
