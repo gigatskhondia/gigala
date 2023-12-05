@@ -23,6 +23,7 @@ Hierarchical Actor Critic (HAC) algorithm described in the paper, [Learning Mult
 
 - The code is implemented as described in the appendix section of the paper and the Official repository, i.e. without target networks and with bounded Q-values.
 - Topology optimization model is taken from [A Tutorial on Structural Optimization](https://www.researchgate.net/publication/360698153_A_Tutorial_on_Structural_Optimization) 
+- Implementation tutorial: [Using Hierarchical Reinforcement Learning for Fast Topology Optimisation](https://gigatskhondia.medium.com/using-hierarchical-reinforcement-learning-for-fast-topology-optimisation-85aa0c07fb7f)
 
 
 ## Citing
