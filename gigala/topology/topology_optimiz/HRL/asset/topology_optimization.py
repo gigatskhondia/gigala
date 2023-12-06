@@ -105,6 +105,8 @@ class CantileverEnv(gym.Env):
         
         # self.reward = (1/self.tmp)**2 if self.const <0.7 else (1/self.tmp)**2-(self.const-0.7)
         self.reward=(1/self.tmp)**0.5
+
+        # self.reward=(1/self.tmp+self.const)**0.5
         # self.reward=(self.const/self.tmp)**0.5
 
         # self.reward += (1/self.tmp)**2
