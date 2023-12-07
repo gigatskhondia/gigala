@@ -1,6 +1,3 @@
-### TODO: work in progress, the environment not optimally solved yet!
-
-
 # Hierarchical reinforcement learning for topology optimization
 
 This is an implementation of Hierarchical-Actor-Critic-HAC algorithm for topology optimization of cantilever beam. 
