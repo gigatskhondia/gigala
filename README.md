@@ -24,8 +24,7 @@ Design of bionic partition (GA on the left, and RL on the right):
 <img width="342" alt="Screenshot 2023-06-29 at 15 56 49" src="https://github.com/gigatskhondia/gigala/assets/31343916/54689109-65ec-4b4c-87ae-1fe11dba031c"><img width="371" alt="Screenshot 2023-07-16 at 22 45 56" src="https://github.com/gigatskhondia/gigala/assets/31343916/4d5954dc-5e80-4b8e-8d02-1ab5757281df">
 
 Topology optimization by reinforcement learning:
-
-<img width="165" alt="Screenshot 2023-07-31 at 22 44 45" src="https://github.com/gigatskhondia/gigala/assets/31343916/bde9577c-0647-4c29-82b1-8f402deff7b0"><img width="277" alt="Screenshot 2023-08-02 at 12 39 14" src="https://github.com/gigatskhondia/gigala/assets/31343916/e97365d9-71cc-4c15-a790-4cb04037c163">
+<img width="271" alt="Fig1" src="https://github.com/gigatskhondia/gigala/assets/31343916/f01f768f-9435-4d7f-9f73-4ff5f6826ece"><img width="277" alt="Screenshot 2023-08-02 at 12 39 14" src="https://github.com/gigatskhondia/gigala/assets/31343916/e97365d9-71cc-4c15-a790-4cb04037c163">
 
 To keep up to date with the project please check [Gigala](https://gigala.io/) page.
 
