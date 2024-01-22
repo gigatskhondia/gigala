@@ -20,7 +20,6 @@ Please check my [blog](https://gigatskhondia.medium.com/) and [manuals](https://
 
 
 Design of bionic partition (GA on the left, and RL on the right): 
-
 <img width="342" alt="Screenshot 2023-06-29 at 15 56 49" src="https://github.com/gigatskhondia/gigala/assets/31343916/54689109-65ec-4b4c-87ae-1fe11dba031c"><img width="371" alt="Screenshot 2023-07-16 at 22 45 56" src="https://github.com/gigatskhondia/gigala/assets/31343916/4d5954dc-5e80-4b8e-8d02-1ab5757281df">
 
 Topology optimization by reinforcement learning:
