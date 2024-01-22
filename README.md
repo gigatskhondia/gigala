@@ -2,17 +2,7 @@
 
 Are you interested in new ways of engineering design? This repository is an attempt to apply artificial intelligence algorithms for the purpose of engineering design of electrical and structural elements and components. I combine numerical simulation like finite element analysis with artificial intelligence like reinforcement learning and genetic algorithms to produce optimal designs. In fact, I started fusing RL and FEA for the purpose of structural engineering design since 2018. Recently, my work has been focused on the analysis of dynamics of offshore structures, electrical circuits and topology optimization. I am constantly exploring different ways that AI can be applied to science and engineering. With my diverse interests, I am using this repository as a testbed for my ideas to create industry standard software for artificial intelligence aided design. I hope that my work can inspire you to explore new ways that AI can be applied to your field.
 
-The software that I develop currently consists of two moduli: offshore dynamics and topology optimization. It uses artificial intelligence to assist an engineer in her design. You can use it as research or engineering analysis tool for different mechanical structures, riser systems, mooring systems, pipelay, renewables, etc.
-
-The software is constantly being developed. Some models that it can do now are:
-
-* Topology optimization of structures
-* Topology optimization of parts
-* Pipelay 3D
-* Pipelay 2D
-* Pipelay profile optimization
-* Spool design
- 
+At present, Gigala software consists of two moduli: topology optimization and offshore dynamics. It uses artificial intelligence to assist an engineer in her design. You can use it as research or engineering analysis tool to design different mechanical and electrical components and elements, or to understand marine dynamics.
  
 Please check my [blog](https://gigatskhondia.medium.com/) and [manuals](https://gigatskhondia.github.io/gigala/) for the specifics of the models and algorithms I use:
 
@@ -35,25 +25,7 @@ Design of bionic partition (GA on the left, and RL on the right):
 
 Topology optimization by reinforcement learning:
 
-<img width="165" alt="Screenshot 2023-07-31 at 22 44 45" src="https://github.com/gigatskhondia/gigala/assets/31343916/bde9577c-0647-4c29-82b1-8f402deff7b0"><img width="277" alt="Screenshot 2023-08-02 at 12 39 14" src="https://github.com/gigatskhondia/gigala/assets/31343916/e97365d9-71cc-4c15-a790-4cb04037c163"><img width="241" alt="Screenshot 2023-08-05 at 15 40 24" src="https://github.com/gigatskhondia/gigala/assets/31343916/48246d51-37bc-4858-8490-904441c1063b">
-
-#### TODO: ####
-  
-*  Design MEMS
-   *  Force inverting mechanism
-   *  Use SfePy for FEM ?
-   *  Use action as part of observation?
-   *  Do not need to remesh, just set stiffness to a small number for absent elements 
-   *  Use GNN or CNN for features ?
-   *  Measure RL trianing progress
-   *  Experiment with different objective functions e.g., compliance, stress based, etc.
-   *  Test generalizability
-*  Engine pylon
-   *  Use Elmer FEM or SfePy for the engine
-   *  Use python for topology design zone
-   *  Hierarchical RL
-   *  Experiment with PINN instead of FEM 
-*  Validate robotic and PDE pipe models
+<img width="165" alt="Screenshot 2023-07-31 at 22 44 45" src="https://github.com/gigatskhondia/gigala/assets/31343916/bde9577c-0647-4c29-82b1-8f402deff7b0"><img width="277" alt="Screenshot 2023-08-02 at 12 39 14" src="https://github.com/gigatskhondia/gigala/assets/31343916/e97365d9-71cc-4c15-a790-4cb04037c163">
 
 To keep up to date with the project please check [Gigala](https://gigala.io/) page.
 
