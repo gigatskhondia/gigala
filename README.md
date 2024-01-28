@@ -1,4 +1,4 @@
-# Engineering Design by Artificial Intelligence
+# Engineering Design by Artificial Intelligence and Numerical Methods
 
 Are you interested in new ways of engineering design? This repository is an attempt to apply artificial intelligence algorithms for the purpose of engineering design of electrical and structural elements and components. I combine numerical simulation like finite element analysis with artificial intelligence like reinforcement learning and genetic algorithms to produce optimal designs. Recently, my work has been focused on topology optimization of electrical circuits. I am constantly exploring different ways that AI can be applied to science and engineering. With my diverse interests, I am using this repository as a testbed for my ideas to create research and industry standard software for artificial intelligence aided design. I hope that my work can inspire you to explore new ways that AI can be applied to your field.
 
