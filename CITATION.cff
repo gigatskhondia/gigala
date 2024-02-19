@@ -5,8 +5,8 @@ message: >-
   metadata from this file.
 type: software
 authors:
-  - given-names: Georgy
-    family-names: Tskhondiya
+  - given-names: Giorgi
+    family-names: Tskhondia
     email: gigatskhondia@gmail.com
     affiliation: Gigala
 identifiers:
@@ -14,7 +14,7 @@ identifiers:
     value: 'https://gigatskhondia.medium.com/'
     description: Medium blog about my project's developments.
   - type: url
-    value: 'https://www.researchgate.net/profile/Georgy-Tskhondiya'
+    value: 'https://www.researchgate.net/profile/Giorgi-Tskhondia'
     description: My ResearchGate profile.
 repository-code: 'https://github.com/gigatskhondia/gigala'
 abstract: >-
