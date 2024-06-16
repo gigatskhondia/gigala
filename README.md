@@ -12,20 +12,7 @@ Philosophy  of the software:
  
 Please check my [blog](https://gigatskhondia.medium.com/) and [manuals](https://gigatskhondia.github.io/gigala/) for the specifics of the models and algorithms I use:
 
-* [Engineering Design by Reinforcement Learning and Finite Element Methods.](https://gigatskhondia.medium.com/engineering-design-by-reinforcement-learning-and-finite-element-methods-82eb57796424)
-* [Topology optimization with reinforcement learning.](https://gigatskhondia.medium.com/topology-optimization-with-reinforcement-learning-d69688ba4fb4)
-* [Using Hierarchical Reinforcement Learning for Fast Topology Optimisation.](https://gigatskhondia.medium.com/using-hierarchical-reinforcement-learning-for-fast-topology-optimisation-85aa0c07fb7f)
-* [Some philosophical aspects of artificial intelligence.](https://gigatskhondia.medium.com/some-philosophical-aspects-of-artificial-intelligence-0a0f0bdb6312)
-* [Engineering Design by Genetic Algorithms and Finite Element Methods.](https://gigatskhondia.medium.com/engineering-design-by-genetic-algorithms-and-finite-element-methods-5077ebadd16e)
-* [On artificial intelligence aided engineering design.](https://gigatskhondia.medium.com/on-artificial-intelligence-aided-engineering-design-a6cf6f76b3d9)
-* [Some ideas on using reinforcement learning in marine construction and sustainable energy development.](https://gigatskhondia.medium.com/using-reinforcement-learning-in-marine-construction-and-sustainable-energy-development-b5f301fb2397)
-* [Modelling offshore pipelaying dynamics.](https://medium.com/@gigatskhondia/modelling-pipelay-dynamics-with-second-order-ordinary-differential-equation-using-python-4d6fc24055b)
-* [Modelling offshore pipelaying dynamics - Part 2.](https://gigatskhondia.medium.com/modelling-offshore-pipelaying-dynamics-part-2-in-6-dof-a360965a7a89)
-* [Pipelay vessel design optimisation using genetic algorithms.](https://medium.com/@gigatskhondia/pipelay-vessel-design-optimisation-using-genetic-algorithms-506aa04212f1)
-* [Python and Finite Element Methods: A Match Made in Heaven?](https://gigatskhondia.medium.com/python-and-finite-element-methods-a-match-made-in-heaven-ee2ed7ca14ee)
-
-
-Design of bionic partition (GA on the left, and RL on the right): 
+Design of bionic partition (Genetic Algorithms on the left, and Reinforcement Learning on the right): 
 <p align="center">
 <img width="342" alt="Screenshot 2023-06-29 at 15 56 49" src="https://github.com/gigatskhondia/gigala/assets/31343916/54689109-65ec-4b4c-87ae-1fe11dba031c"><img width="371" alt="Screenshot 2023-07-16 at 22 45 56" src="https://github.com/gigatskhondia/gigala/assets/31343916/4d5954dc-5e80-4b8e-8d02-1ab5757281df">
 </p>
