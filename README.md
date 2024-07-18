@@ -7,7 +7,7 @@ At present, Gigala software consists of two moduli: topology optimization and of
 Philosophy  of the software:
 * free
 * open source
-* runnable on personal computer
+* practical performance on a personal computer
 
  
 Please check my [blog](https://gigatskhondia.medium.com/) and [manuals](https://gigatskhondia.github.io/gigala/) for the specifics of the models and algorithms I use:
