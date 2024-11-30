@@ -13,14 +13,14 @@ def test():
     env_name ="T0-h-v1"
 
     save_episode = 20               # keep saving every n episodes
-    max_episodes =  10         # max num of training episodes
-    random_seed =  1
+    max_episodes = 10         # max num of training episodes
+    random_seed = 1
     render = False
     
     env = gym.make(env_name)
-    env.layer_dim= 12
-    env.n_layers= 16
-    env.optimizer='SGD'
+    env.layer_dim = 12
+    env.n_layers = 16
+    env.optimizer = 'SGD'
     state_dim = env.observation_space.shape[0]
     action_dim = env.N_DISCRETE_ACTIONS
     

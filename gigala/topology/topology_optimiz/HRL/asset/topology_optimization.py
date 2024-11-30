@@ -104,7 +104,7 @@ class CantileverEnv(gym.Env):
         self.step_+=1
         
         # self.reward = (1/self.tmp)**2 if self.const <0.7 else (1/self.tmp)**2-(self.const-0.7)
-        self.reward=(1/self.tmp)**0.5
+        self.reward = (1/self.tmp)**0.5
 
         # self.reward=(1/self.tmp+self.const**2)**0.5
         # self.reward=(self.const/self.tmp)**0.5
@@ -123,10 +123,9 @@ class CantileverEnv(gym.Env):
         #     self.reward+=1
         #     done=True  
                  
-        if self.step_>self.M.n*self.M.m:
-            done=True    
-            
-            
+        if self.step_ > self.M.n*self.M.m:
+            done = True
+
         if self.needs_reset:
             raise RuntimeError("Tried to step environment that needs reset")
             
