@@ -12,7 +12,7 @@ def train():
     env_name ="T0-h-v1"
 
     save_episode = 100             # keep saving every n episodes
-    max_episodes = 7_000     # max num of training episodes
+    max_episodes = 5_000     # max num of training episodes
     random_seed = 1
     render = False
     
