@@ -2,7 +2,7 @@
 
 Are you interested in new ways of engineering design? This repository is an attempt to apply artificial intelligence algorithms for the purpose of engineering design of mechanical and structural elements and components. I combine numerical simulation like finite element analysis with artificial intelligence like reinforcement learning to produce optimal designs. Recently, my work has been focused on topology optimization of mechanical structures and elements. I am constantly exploring different ways that AI can be applied to science and engineering. With my diverse interests, I am using this repository as a testbed for my ideas to create software for artificial intelligence aided design. I hope that my work can inspire you to explore new ways that AI can be applied to your field.
 
-At present, Gigala software consists of topology optimization module. It uses artificial intelligence to assist an engineer in her design. You can use it as research or engineering analysis tool to design different mechanical and electrical components and elements.
+At present, Gigala software consists of topology optimization module. It uses artificial intelligence to assist an engineer in her design. You can use it as research or engineering analysis tool to design different mechanical components and elements.
 
 Philosophy  of the software:
 * free
