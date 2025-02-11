@@ -8,7 +8,7 @@ authors:
   - given-names: Giorgi
     family-names: Tskhondia
     email: gigatskhondia@gmail.com
-    affiliation: Gigala
+    affiliation: Independent researcher
 identifiers:
   - type: url
     value: 'https://gigatskhondia.medium.com/'
@@ -23,7 +23,8 @@ abstract: >-
 keywords:
   - Reinforcement learning
   - Finite element methods
-  - Marine and structural engineering
+  - Structural engineering
   - Design
+  - Topology optimization
 license: MIT
 date-released: '2018-10-13'
