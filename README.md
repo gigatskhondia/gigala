@@ -10,7 +10,7 @@ Philosophy  of the software:
 * practical performance on a desktop computer
 
  
-Please check my [blog](https://gigatskhondia.medium.com/), [manuals](https://gigatskhondia.github.io/gigala/) or [ResearchGate](https://www.researchgate.net/profile/Giorgi-Tskhondia) for the specifics of the models and algorithms I use. 
+Please check my [blog](https://gigatskhondia.medium.com/) or [manuals](https://gigatskhondia.github.io/gigala/) or [ResearchGate](https://www.researchgate.net/profile/Giorgi-Tskhondia) for the specifics of the models and algorithms I use. 
 
 Topology optimization by reinforcement learning:
 <p align="center">
