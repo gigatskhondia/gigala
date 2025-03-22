@@ -31,7 +31,7 @@ class Model:
         
     def draw(self,X):  
         plt.figure(dpi=50) 
-        print('\nFinal Cantilever beam design:')
+        print('\nFinal Cantilever rl_beam design:')
         plt.imshow(X) 
         plt.show(block=False)
         plt.pause(3)

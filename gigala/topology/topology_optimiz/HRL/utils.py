@@ -59,7 +59,7 @@ def get_args(normals, forces, density=1e-4):  # Manage the problem setup paramet
       'opt_steps': 80, 'print_every': 10}
     return ObjectView(params)
 
-def mbb_beam(width=4, height=4, density=1e-4, y=1, x=0, rd=-1):  # textbook beam example
+def mbb_beam(width=4, height=4, density=1e-4, y=1, x=0, rd=-1):  # textbook rl_beam example
     normals = np.zeros((width + 1, height + 1, 2))
     normals[0, 0, x] = 1
     normals[0, 0, y] = 1
