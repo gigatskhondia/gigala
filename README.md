@@ -10,7 +10,7 @@ Philosophy  of the software:
 * practical performance on a desktop computer
 
  
-Please check my [Blog](https://gigatskhondia.medium.com/) or [ResearchGate](https://www.researchgate.net/profile/Giorgi-Tskhondia) for the specifics of the models and algorithms I use. 
+Please check my [Blog](https://gigatskhondia.medium.com/) and [ResearchGate](https://www.researchgate.net/profile/Giorgi-Tskhondia) for the specifics of the models and algorithms I use. 
 
 For citation please use [Reinforcement Learning Guided Engineering Design: from Topology Optimization to Advanced Modelling](https://jngr5.com/index.php/journal-of-next-generation-resea/article/view/95) 
 
