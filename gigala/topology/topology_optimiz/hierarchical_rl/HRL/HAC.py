@@ -63,7 +63,10 @@ class HAC:
             # if this is a subgoal test, then next/lower level goal has to be a subgoal test
             is_next_subgoal_test = is_subgoal_test
             
-            action = self.HAC[i_level].select_action(state, goal) 
+            action = self.HAC[i_level].select_action(state, goal)
+
+            # if len(action) != 2:
+            #     action = action * (1 - 0.3 * env.x.reshape(env.N_DISCRETE_ACTIONS))
           
             # print(next_state)  
             #   <================ high level policy ================>
