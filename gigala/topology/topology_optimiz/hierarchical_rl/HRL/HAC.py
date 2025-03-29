@@ -66,7 +66,7 @@ class HAC:
             action = self.HAC[i_level].select_action(state, goal)
 
             # if len(action) != 2:
-            #     action = action * (1 - 0.3 * env.x.reshape(env.N_DISCRETE_ACTIONS))
+            #     action = action * (1 - 0.9 * env.x.reshape(env.N_DISCRETE_ACTIONS))
           
             # print(next_state)  
             #   <================ high level policy ================>
