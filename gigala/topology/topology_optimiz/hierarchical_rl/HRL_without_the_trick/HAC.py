@@ -122,12 +122,12 @@ class HAC:
             
             # hindsight action transition
             if goal_achieved:
-                self.replay_buffer[i_level].add((state, action, self.reward, next_state, goal, 0.0, float(done)))  # 0
+                self.replay_buffer[i_level].add((state, action, 0.0, next_state, goal, 0.0, float(done)))
             else:
-                self.replay_buffer[i_level].add((state, action, self.reward, next_state, goal, self.gamma, float(done))) # -1
+                self.replay_buffer[i_level].add((state, action, -1.0, next_state, goal, self.gamma, float(done)))
 
             # copy for goal transition
-            goal_transitions.append([state, action, self.reward, next_state, None, self.gamma, float(done)]) # -1
+            goal_transitions.append([state, action, -1.0, next_state, None, self.gamma, float(done)])
 
             state = next_state
             
