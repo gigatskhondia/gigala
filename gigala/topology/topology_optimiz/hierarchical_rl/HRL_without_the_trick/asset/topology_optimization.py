@@ -84,6 +84,9 @@ class CantileverEnv(gym.Env):
         self.tmp, self.const = fast_stopt(self.args, self.x)
         self.step_+=1
         
+#         entropy = -np.sum(self.x * np.log2(self.x))
+#         self.reward = (1/self.tmp)**0.5+entropy
+
         self.reward = (1/self.tmp)**0.5
 
         done = False
