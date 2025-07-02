@@ -24,6 +24,11 @@ Topology optimization by genetic algorithms:
  <img width="271" alt="Fig1" src="https://github.com/gigatskhondia/gigala/assets/31343916/f01f768f-9435-4d7f-9f73-4ff5f6826ece"><img width="241" alt="Screenshot 2024-07-20 at 06 06 51" src="https://github.com/user-attachments/assets/c06d482a-55f9-458b-ad03-8c5519c966d7">
 </p>
 
+Pseudo 3D topology optimization by reinforcement learning (work in progress):
+<p align="center">
+<img width="521" alt="Screenshot 2025-07-02 at 13 01 37" src="https://github.com/user-attachments/assets/c2b63101-3423-4297-bc31-d2603caf098c" />
+</p>
+
 To keep up to date with the project please check [Gigala](https://gigala.io/) page.
 
 #### If you like my project and want to support it, please consider doing any of the following: ####
