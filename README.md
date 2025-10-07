@@ -24,7 +24,7 @@ Topology optimization by genetic algorithms:
  <img width="271" alt="Fig1" src="https://github.com/gigatskhondia/gigala/assets/31343916/f01f768f-9435-4d7f-9f73-4ff5f6826ece"><img width="241" alt="Screenshot 2024-07-20 at 06 06 51" src="https://github.com/user-attachments/assets/c06d482a-55f9-458b-ad03-8c5519c966d7">
 </p>
 
-Pseudo 3D topology optimization by reinforcement learning (work in progress, see [preprint](https://www.researchgate.net/publication/393164291_Pseudo_3D_topology_optimisation_with_reinforcement_learning) ):
+Pseudo 3D topology optimization by reinforcement learning (see [preprint](https://www.researchgate.net/publication/393164291_Pseudo_3D_topology_optimisation_with_reinforcement_learning) ):
 <p align="center">
 <img width="447" height="438" alt="Screenshot 2025-07-14 at 00 32 42" src="https://github.com/user-attachments/assets/ca122293-bad3-49c0-8178-0bef655cc061" />
 </p>
