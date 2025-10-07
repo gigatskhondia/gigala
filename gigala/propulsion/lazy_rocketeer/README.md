@@ -1,4 +1,4 @@
-### LLM Agent to design a rocket engine 
+### Lazy Rocketeer - LLM Agent to design rocket engines 
 
 You can communicate in natural language with the agent. To run: *** streamlit run app.py ***
 

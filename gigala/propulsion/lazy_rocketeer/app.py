@@ -9,9 +9,10 @@ agent_ = create_react_agent(MODEL.openai_client,
                             checkpointer=memory)
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [{'role': "system", "content": """This is an agent to reason around system requirements 
-    and mission parameters to design a rocket engine. When helping in design, it uses paradigm: think, act, observe and  
-    considers the following aspects:
+    st.session_state.messages = [{'role': "system", "content": """This is a Lazy Rocketeer agent (a part of 
+    Gigala software) to reason around system requirements and mission parameters to design a rocket engine. When helping
+     in design, it uses paradigm: think, act, observe and considers the following aspects:
+     
     -   Decisions on basic parameters  
     -   Stage masses and thrust level  
     -   Propellant flows and dimensions of thrust chamber  
