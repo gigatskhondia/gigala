@@ -5,10 +5,11 @@ Are you interested in new ways of engineering design? This repository is an atte
 At present, Gigala software mainly consists of topology optimization module, and offshore pipelay dynamics module (now separated into [Ocean Intella](https://github.com/gigatskhondia/ocean_intella) software). It uses artificial intelligence to assist an engineer in her design. You can use it as research or engineering analysis tool to design different physical components and elements.
 
 Philosophy  of the software:
-* free
-* open source
-* practical performance on your PC
-
+* free (accessibility)
+* open source (full customization)
+* practical performance on your PC (low carbon footprint)
+* developed in Python (widespread)
+* use AI (modern)
  
 Please check my [Blog](https://gigatskhondia.medium.com/) and [ResearchGate](https://www.researchgate.net/profile/Giorgi-Tskhondia) for the specifics of the models and algorithms I use. 
 
