@@ -4,6 +4,10 @@ Are you interested in new ways of engineering design? This repository is an atte
 
 At present, Gigala software mainly consists of topology optimization module, and offshore pipelay dynamics module (now separated into [Ocean Intella](https://github.com/gigatskhondia/ocean_intella) software). It uses artificial intelligence to assist an engineer in her design. You can use it as research or engineering analysis tool to design different physical components and elements.
 
+RL agent designing a cantilever:
+![Cantilever design by RL](https://github.com/user-attachments/assets/ae471032-56eb-4907-9f0b-e7a7d30038b9)
+
+
 Philosophy  of the software:
 * free (accessibility)
 * open source (full customization)
