@@ -1,6 +1,6 @@
 ## Gigala (Engineering design by reinforcement learning, genetic algorithms and finite element methods)
 
-Are you interested in new ways of engineering design? This repository is an attempt to apply artificial intelligence algorithms for the purpose of engineering design of physical products. I combine numerical simulation like finite element analysis with artificial intelligence like reinforcement learning to produce optimal designs. Starting from 2018, my work has been focused on intelligent topology optimization of mechanical structures and elements. I am constantly exploring different ways that AI can be applied to science and engineering.
+Are you interested in new ways of engineering design? This repository is an attempt to apply artificial intelligence algorithms for the purpose of engineering design of physical products. I combine numerical simulation like finite element analysis with artificial intelligence like reinforcement learning to produce optimal designs. Starting from 2018, my work has been focused on intelligent topology optimization in structural mechanics. I am constantly exploring different ways that AI can be applied to science and engineering.
 
 Reinforcement learning is a global, gradient-free, non-convex, learning-based, generalizable topology optimization method suitable for practical needs. Sequential nature of reinforcement learning makes it also applicable to technological processes where it can provide manufacturing steps.
 
