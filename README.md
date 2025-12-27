@@ -2,7 +2,7 @@
 
 Are you interested in new ways of engineering design? This repository is an attempt to apply artificial intelligence algorithms for the purpose of engineering design of physical products. I combine numerical simulation like finite element analysis with artificial intelligence like reinforcement learning to produce optimal designs. Starting from 2018, my work has been focused on intelligent topology optimization in structural mechanics. I am constantly exploring different ways that AI can be applied to science and engineering.
 
-Reinforcement learning is a global, gradient-free, non-convex, learning-based, generalizable topology optimization method suitable for practical needs. Sequential nature of reinforcement learning makes it also applicable to technological processes where it can provide manufacturing steps, and to the design of complex machinery with moving parts.
+Reinforcement learning is a global, gradient-free, non-convex, learning-based, generalizable topology optimization method suitable for practical needs. Sequential nature of reinforcement learning makes it also applicable to technological processes where it can provide manufacturing steps, and to the design of complex machinery with moving parts (For example, imagine you have a robotic manipulator in one position, then because of a sequential nature of RL, you can "erase" the manipulator in that position, and "redraw" it in a different position, thus "optimizing topologies for dynamical events").
 
 With my diverse interests, I am using this repository as a testbed for my ideas to create software for artificial intelligence aided design. I hope that my work can inspire you to explore new ways that AI can be applied to your field.
 
