@@ -18,7 +18,7 @@ Philosophy  of the software:
 Please check my [Blog](https://gigatskhondia.medium.com/) and [ResearchGate](https://www.researchgate.net/profile/Giorgi-Tskhondia) for the specifics of the models and algorithms I use. 
 
 For citation please use:
-* [Reinforcement Learning Guided Engineering Design: from Topology Optimization to Advanced Modelling](https://www.researchgate.net/publication/389785241_Reinforcement_Learning_Guided_Engineering_Design_from_Topology_Optimization_to_Advanced_Modelling) 
+* [Reinforcement Learning Guided Engineering Design: from Topology Optimization to Advanced Modelling](https://jngr5.com/index.php/journal-of-next-generation-resea/article/view/95) 
 
 RL agent designing a cantilever:
 ![Cantilever design by RL](https://github.com/user-attachments/assets/ae471032-56eb-4907-9f0b-e7a7d30038b9)
