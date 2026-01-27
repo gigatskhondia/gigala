@@ -25,7 +25,7 @@ RL agent designing a cantilever:
 
 For current benchmarks see:
 * [Pseudo 3D topology optimisation with reinforcement learning (preprint)](https://www.researchgate.net/publication/393164291_Pseudo_3D_topology_optimisation_with_reinforcement_learning)
-* [Practical topology optimization with deep reinforcement learning (preprint)](https://www.researchgate.net/publication/398406554_Practical_topology_optimization_with_deep_reinforcement_learning).
+* [Practical topology optimization with deep reinforcement learning (preprint)](https://www.researchgate.net/publication/398406554_Practical_topology_optimization_with_deep_reinforcement_learning)
 
 To keep up to date with the project please check [Gigala](https://gigala.io/) page.
 
