@@ -23,7 +23,7 @@ For citation please use:
 RL agent designing a cantilever:
 ![Cantilever design by RL](https://github.com/user-attachments/assets/ae471032-56eb-4907-9f0b-e7a7d30038b9)
 
-For current benchmarks see [[preprint_0](https://www.researchgate.net/publication/393164291_Pseudo_3D_topology_optimisation_with_reinforcement_learning)] and [[preprint_1](https://www.researchgate.net/publication/398406554_Practical_topology_optimization_with_deep_reinforcement_learning)].
+For current benchmarks see [[Pseudo 3D topology optimisation with reinforcement learning](https://www.researchgate.net/publication/393164291_Pseudo_3D_topology_optimisation_with_reinforcement_learning)] and [[Practical topology optimization with deep reinforcement learning](https://www.researchgate.net/publication/398406554_Practical_topology_optimization_with_deep_reinforcement_learning)].
 
 To keep up to date with the project please check [Gigala](https://gigala.io/) page.
 
