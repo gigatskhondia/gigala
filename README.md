@@ -18,14 +18,11 @@ Philosophy  of the software:
 Please check my [Blog](https://gigatskhondia.medium.com/) and [ResearchGate](https://www.researchgate.net/profile/Giorgi-Tskhondia) for the specifics of the models and algorithms I use. 
 
 For citation please use:
-* [Reinforcement Learning Guided Engineering Design: from Topology Optimization to Advanced Modelling](https://jngr5.com/index.php/journal-of-next-generation-resea/article/view/95) 
+* [Reinforcement Learning Guided Engineering Design: from Topology Optimization to Advanced Modelling](https://jngr5.com/index.php/journal-of-next-generation-resea/article/view/95)
+* [Practical Topology Optimization with Deep Reinforcement Learning and Genetic Algorithms](https://www.sciencepg.com/article/10.11648/j.ajasr.20261201.11)
 
 RL agent designing a cantilever:
 ![Cantilever design by RL](https://github.com/user-attachments/assets/ae471032-56eb-4907-9f0b-e7a7d30038b9)
-
-For current benchmarks see:
-* [Pseudo 3D topology optimisation with reinforcement learning (preprint)](https://www.researchgate.net/publication/393164291_Pseudo_3D_topology_optimisation_with_reinforcement_learning)
-* [Practical topology optimization with deep reinforcement learning (preprint)](https://www.researchgate.net/publication/398406554_Practical_topology_optimization_with_deep_reinforcement_learning)
 
 To keep up to date with the project please check [Gigala](https://gigala.io/) page.
 
