@@ -8,7 +8,7 @@ With my diverse interests, I am using this repository as a testbed for my ideas 
 
 At present, Gigala software consists of topology optimization module, and offshore pipelay dynamics module (now separated into [Ocean Intella](https://github.com/gigatskhondia/ocean_intella) software). It uses artificial intelligence to assist an engineer in her design. You can use it as research or engineering analysis tool to design different physical components and elements. 
 
-These days, Gigala is a pre-industrial grade software where it is capable of designing simple components like pins, hinges or small elements (within the power of a personal computer). However, if supercomputers were applied, Gigala already would have been software of full industrial grade.
+Gigala is a pre-industrial grade software where it is capable of designing simple components like pins, hinges or small elements (within the power of a personal computer). However, if supercomputers were applied, Gigala already would have been software of full industrial grade.
 
 Philosophy  of the software:
 * free (accessibility)
