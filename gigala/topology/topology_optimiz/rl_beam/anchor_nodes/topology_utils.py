@@ -8,6 +8,12 @@ def deconstruct(grid, topology, location, x0, y0):
     gr[row_offset:row_offset+x0//4, col_offset:col_offset+x0//4] = topology.copy()
     return gr
 
+def return_topology_slice(grid, location, x0, y0):
+    gr = grid.copy()
+    row_offset = (location // 4) * (x0//4)
+    col_offset = (location % 4) * (x0//4)
+    return  gr[row_offset:row_offset+x0//4, col_offset:col_offset+x0//4].copy()
+
 
 def calculate_smoothness_metric(binary_matrix):
     """
