@@ -154,7 +154,8 @@ def run_coarse_search(
             if signature in seen:
                 continue
             seen.add(signature)
-            evaluation = evaluator.evaluate(mask, "proxy16")
+#             evaluation = evaluator.evaluate(mask, "proxy16")
+            evaluation = evaluator.evaluate(mask, "proxy32")
             scored.append(SearchCandidate(mask=mask, evaluation=evaluation))
 
         scored.sort(key=lambda item: item.evaluation.score)
@@ -166,7 +167,8 @@ def run_coarse_search(
                 progress(
                     f"coarse16 generation {generation + 1}/{config.coarse_generations}: "
                     f"best_score={best.score:.4f}, volume={best.volume_fraction:.4f}, "
-                    f"proxy16_evals={int(evaluator.fea_counts['proxy16'])}, cache_hits={evaluator.cache_hits}"
+#                     f"proxy16_evals={int(evaluator.fea_counts['proxy16'])}, cache_hits={evaluator.cache_hits}"
+                    f"proxy16_evals={int(evaluator.fea_counts['proxy32'])}, cache_hits={evaluator.cache_hits}"
                 )
         if deadline and time.time() >= deadline:
             if progress:
@@ -251,8 +253,10 @@ def boundary_local_search(
                 progress(
                     f"{fidelity} seed {seed_index}/{len(seeds)} step {step_index + 1}/{steps}: "
                     f"best_score={current_eval.score:.4f}, "
-                    f"proxy32_evals={int(evaluator.fea_counts['proxy32'])}, "
-                    f"full64_evals={int(evaluator.fea_counts['full64'])}, "
+#                     f"proxy32_evals={int(evaluator.fea_counts['proxy32'])}, "
+#                     f"full64_evals={int(evaluator.fea_counts['full64'])}, "
+                    f"proxy32_evals={int(evaluator.fea_counts['proxy64'])}, "
+                    f"full64_evals={int(evaluator.fea_counts['full128'])}, "
                     f"cache_hits={evaluator.cache_hits}"
                 )
         results.append(SearchCandidate(mask=current, evaluation=current_eval))
