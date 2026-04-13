@@ -174,9 +174,11 @@ class PipelineTests(unittest.TestCase):
             summary_path = Path(tmp_dir) / "summary.json"
             coarse_path = Path(tmp_dir) / "coarse16.npy"
             refined32_path = Path(tmp_dir) / "refined32.npy"
+            refined64_png_path = Path(tmp_dir) / "refined64.png"
             self.assertTrue(summary_path.exists())
             self.assertTrue(coarse_path.exists())
             self.assertTrue(refined32_path.exists())
+            self.assertTrue(refined64_png_path.exists())
 
 
 if __name__ == "__main__":

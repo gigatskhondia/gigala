@@ -2,15 +2,23 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+os.environ.setdefault("MPLCONFIGDIR", "/tmp/mplconfig_gen_rl")
+
+import matplotlib
 import numpy as np
+from matplotlib.colors import ListedColormap
 
 from .fem import ProblemConfig
 from .pipeline import run_multistage_search
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -101,6 +109,16 @@ def _save_outputs(output_dir: Path, artifacts: Any, config: ProblemConfig) -> di
     if artifacts.refined64 is not None:
         np.save(output_dir / "refined64.npy", artifacts.refined64)
         saved["refined64"] = str(output_dir / "refined64.npy")
+        final_png = output_dir / "refined64.png"
+        figure = plt.figure(dpi=100)
+        print("\nFinal Cantilever beam design:")
+        yellow_material = ListedColormap(["#ffffff", "#ffd84d"])
+        plt.imshow(artifacts.refined64, cmap=yellow_material, vmin=0, vmax=1)
+        plt.axis("off")
+        plt.tight_layout()
+        plt.savefig(final_png, bbox_inches="tight", pad_inches=0.05)
+        plt.close(figure)
+        saved["refined64_png"] = str(final_png)
 
     summary = _summary_payload(config, artifacts)
     summary["saved_masks"] = saved
