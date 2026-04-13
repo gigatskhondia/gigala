@@ -209,8 +209,8 @@ def run_multistage_search(config: ProblemConfig, *, progress: ProgressFn | None 
     else:
         stage32_candidates = coarse_candidates[: config.stage64_top_k]
 
-#     if config.resolution >= 64:
-    if config.resolution >= 128:
+    if config.resolution >= 64:
+#     if config.resolution >= 128:
         seeds64_source = stage32_candidates[: config.stage64_top_k]
         if progress:
             progress(

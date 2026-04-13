@@ -94,20 +94,20 @@ if th is not None:  # pragma: no cover - optional dependency
             super().__init__(observation_space, features_dim)
             channels = observation_space.shape[0]
             self.network = th.nn.Sequential(
-#                 th.nn.Conv2d(channels, 16, kernel_size=3, stride=2, padding=1),
-#                 th.nn.ReLU(),
-#                 th.nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
-#                 th.nn.ReLU(),
-#                 th.nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
-#                 th.nn.ReLU(),
-#                 th.nn.Flatten(),
-                th.nn.Conv2d(channels, 32, kernel_size=3, stride=2, padding=1),
+                th.nn.Conv2d(channels, 16, kernel_size=3, stride=2, padding=1),
+                th.nn.ReLU(),
+                th.nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
                 th.nn.ReLU(),
                 th.nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
                 th.nn.ReLU(),
-                th.nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
-                th.nn.ReLU(),
                 th.nn.Flatten(),
+#                 th.nn.Conv2d(channels, 32, kernel_size=3, stride=2, padding=1),
+#                 th.nn.ReLU(),
+#                 th.nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+#                 th.nn.ReLU(),
+#                 th.nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+#                 th.nn.ReLU(),
+#                 th.nn.Flatten(),
             )
             with th.no_grad():
                 sample = th.as_tensor(observation_space.sample()[None]).float()
@@ -119,12 +119,12 @@ if th is not None:  # pragma: no cover - optional dependency
 
 
 def default_policy_kwargs() -> dict[str, Any]:
-#     kwargs: dict[str, Any] = {"net_arch": [128, 128]}
-    kwargs: dict[str, Any] = {"net_arch": [256, 256]}    
+    kwargs: dict[str, Any] = {"net_arch": [128, 128]}
+#     kwargs: dict[str, Any] = {"net_arch": [256, 256]}
     if th is not None:
         kwargs["features_extractor_class"] = SmallBinaryMaskCNN
-#         kwargs["features_extractor_kwargs"] = {"features_dim": 128}
-        kwargs["features_extractor_kwargs"] = {"features_dim": 256}
+        kwargs["features_extractor_kwargs"] = {"features_dim": 128}
+        # kwargs["features_extractor_kwargs"] = {"features_dim": 256}
     return kwargs
 
 

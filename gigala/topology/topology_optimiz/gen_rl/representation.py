@@ -8,15 +8,15 @@ from .metrics import ensure_binary, frontier_band
 
 
 def infer_stage_resolutions(final_resolution: int) -> tuple[int, ...]:
-#     if final_resolution <= 16:
-    if final_resolution <= 32:    
+    if final_resolution <= 16:
+    # if final_resolution <= 32:
         return (final_resolution,)
-#     if final_resolution <= 32:
-    if final_resolution <= 64:    
-#         return (16, final_resolution)
-#     return (16, 32, final_resolution)
-        return (32, final_resolution)
-    return (32, 64, final_resolution)
+    if final_resolution <= 32:
+    # if final_resolution <= 64:
+        return (16, final_resolution)
+    return (16, 32, final_resolution)
+        # return (32, final_resolution)
+    # return (32, 64, final_resolution)
 
 
 def upsample_binary_mask(mask: np.ndarray, target_resolution: int) -> np.ndarray:
