@@ -26,7 +26,7 @@ from .representation import infer_stage_resolutions
 Fidelity = Literal["proxy16", "proxy32", "full64"]
 
 
-@dataclass(slots=True)
+@dataclass
 class ProblemConfig:
     resolution: int
     volume_target: float = 0.55
@@ -63,7 +63,7 @@ class ProblemConfig:
         return infer_stage_resolutions(self.resolution)
 
 
-@dataclass(slots=True)
+@dataclass
 class EvalResult:
     fidelity: Fidelity
     resolution: int
@@ -78,7 +78,7 @@ class EvalResult:
     invalid_reason: str | None = None
 
 
-@dataclass(slots=True)
+@dataclass
 class MeshSetup:
     resolution: int
     forces: np.ndarray

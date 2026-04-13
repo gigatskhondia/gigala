@@ -12,7 +12,7 @@ from .metrics import ensure_binary, frontier_band, prune_isolated_cells
 from .representation import apply_patch, boundary_patch_coordinates
 
 
-@dataclass(slots=True)
+@dataclass
 class SearchCandidate:
     mask: np.ndarray
     evaluation: EvalResult

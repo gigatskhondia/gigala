@@ -25,7 +25,7 @@ except Exception:  # pragma: no cover - optional dependency
     BaseFeaturesExtractor = object  # type: ignore[assignment]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class GridAction:
     kind: str
     row: int

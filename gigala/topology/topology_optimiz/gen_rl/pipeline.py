@@ -12,7 +12,7 @@ from .fem import EvalResult, Evaluator, ProblemConfig, evaluation_snapshot
 from .representation import infer_stage_resolutions, upsample_binary_mask
 
 
-@dataclass(slots=True)
+@dataclass
 class StageArtifacts:
     coarse16: np.ndarray
     refined32: np.ndarray | None
