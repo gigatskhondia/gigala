@@ -9,6 +9,7 @@ import numpy as np
 from gigala.topology.topology_optimiz.gen_rl import ProblemConfig, run_multistage_search
 from gigala.topology.topology_optimiz.gen_rl.cli import main as cli_main
 from gigala.topology.topology_optimiz.gen_rl.fem import Evaluator
+from gigala.topology.topology_optimiz.gen_rl.pipeline import _resolve_rl_device
 from gigala.topology.topology_optimiz.gen_rl.refine_env import build_action_catalog, compute_action_mask
 from gigala.topology.topology_optimiz.gen_rl.representation import upsample_binary_mask
 
@@ -77,6 +78,27 @@ class EvaluatorTests(unittest.TestCase):
         full_order = np.argsort(full_scores)
         agreement = np.mean(proxy_order == full_order)
         self.assertGreaterEqual(agreement, 0.5)
+
+    def test_resolve_rl_device_prefers_mps_for_auto(self) -> None:
+        class FakeMPS:
+            @staticmethod
+            def is_available() -> bool:
+                return True
+
+        class FakeCuda:
+            @staticmethod
+            def is_available() -> bool:
+                return False
+
+        class FakeBackends:
+            mps = FakeMPS()
+
+        class FakeTorch:
+            cuda = FakeCuda()
+            backends = FakeBackends()
+
+        config = ProblemConfig(resolution=64, rl_device="auto")
+        self.assertEqual(_resolve_rl_device(config, torch_module=FakeTorch), "mps")
 
 
 class PipelineTests(unittest.TestCase):

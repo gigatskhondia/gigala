@@ -45,6 +45,7 @@ class ProblemConfig:
     full_eval_every: int = 16
     max_episode_steps: int = 256
     enable_rl: bool = True
+    rl_device: str = "auto"
     rl_total_timesteps: int = 100_000
     max_full_evals: int = 20_000
     max_rl_full_evals: int = 5_000

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -30,6 +31,45 @@ def _result_to_dict(result: EvalResult) -> dict[str, Any]:
     return dataclasses.asdict(result)
 
 
+def _resolve_rl_device(config: ProblemConfig, *, progress: ProgressFn | None = None, torch_module: Any | None = None) -> str:
+    requested = config.rl_device
+    if torch_module is None:
+        try:  # pragma: no cover - optional dependency
+            import torch as torch_module  # type: ignore[no-redef]
+        except Exception:
+            if progress:
+                progress("torch is unavailable; RL device forced to cpu.")
+            return "cpu"
+
+    if requested == "cpu":
+        return "cpu"
+
+    if requested == "cuda":
+        if bool(torch_module.cuda.is_available()):
+            return "cuda"
+        if progress:
+            progress("requested rl_device=cuda but CUDA is unavailable; falling back to cpu.")
+        return "cpu"
+
+    if requested == "mps":
+        if hasattr(torch_module.backends, "mps") and bool(torch_module.backends.mps.is_available()):
+            return "mps"
+        if progress:
+            progress("requested rl_device=mps but MPS is unavailable; falling back to cpu.")
+        return "cpu"
+
+    if requested == "auto":
+        if hasattr(torch_module.backends, "mps") and bool(torch_module.backends.mps.is_available()):
+            return "mps"
+        if bool(torch_module.cuda.is_available()):
+            return "cuda"
+        return "cpu"
+
+    if progress:
+        progress(f"unknown rl_device={requested}; falling back to cpu.")
+    return "cpu"
+
+
 def evaluate(
     mask: np.ndarray,
     fidelity: str,
@@ -57,6 +97,8 @@ def _maybe_run_rl(
             progress("RL refinement disabled by config; returning boundary-refined seed.")
         return seed_mask
     try:  # pragma: no cover - optional dependency
+        os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+        import torch
         from sb3_contrib import MaskablePPO
         from stable_baselines3.common.monitor import Monitor
     except Exception:
@@ -67,10 +109,11 @@ def _maybe_run_rl(
 
     from .refine_env import default_policy_kwargs, make_refine_env
 
+    device = _resolve_rl_device(config, progress=progress, torch_module=torch)
     if progress:
         progress(
             f"starting RL refinement: total_timesteps={config.rl_total_timesteps}, "
-            f"max_rl_full_evals={config.max_rl_full_evals}"
+            f"max_rl_full_evals={config.max_rl_full_evals}, device={device}"
         )
     env = make_refine_env(seed_mask, config, evaluator=evaluator)
     monitored = Monitor(env)
@@ -81,6 +124,7 @@ def _maybe_run_rl(
         policy_kwargs=default_policy_kwargs(),
         verbose=1 if progress else 0,
         seed=config.random_seed,
+        device=device,
     )
     model.learn(total_timesteps=config.rl_total_timesteps)
     if progress:
@@ -107,7 +151,8 @@ def run_multistage_search(config: ProblemConfig, *, progress: ProgressFn | None 
     if progress:
         progress(
             f"pipeline started: final_resolution={config.resolution}, stages={stage_resolutions}, "
-            f"runtime_budget_hours={config.runtime_budget_hours}, enable_rl={config.enable_rl}"
+            f"runtime_budget_hours={config.runtime_budget_hours}, enable_rl={config.enable_rl}, "
+            f"rl_device={config.rl_device}"
         )
 
     coarse_candidates = run_coarse_search(

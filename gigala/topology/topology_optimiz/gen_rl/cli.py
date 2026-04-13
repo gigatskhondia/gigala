@@ -33,6 +33,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Enable optional MaskablePPO refinement when dependencies are installed.",
     )
     parser.add_argument(
+        "--rl-device",
+        default="auto",
+        choices=("auto", "cpu", "mps", "cuda"),
+        help="Torch device for RL refinement. On Apple silicon, use auto or mps.",
+    )
+    parser.add_argument(
         "--rl-total-timesteps",
         type=int,
         default=100_000,
@@ -65,6 +71,7 @@ def _summary_payload(config: ProblemConfig, artifacts: Any) -> dict[str, Any]:
             "solver_backend": config.solver_backend,
             "runtime_budget_hours": config.runtime_budget_hours,
             "enable_rl": config.enable_rl,
+            "rl_device": config.rl_device,
             "rl_total_timesteps": config.rl_total_timesteps,
             "coarse_population": config.coarse_population,
             "coarse_generations": config.coarse_generations,
@@ -117,6 +124,7 @@ def main(argv: list[str] | None = None) -> int:
         solver_backend=args.solver_backend,
         runtime_budget_hours=args.runtime_budget_hours,
         enable_rl=args.enable_rl,
+        rl_device=args.rl_device,
         rl_total_timesteps=args.rl_total_timesteps,
         coarse_population=args.coarse_population,
         coarse_generations=args.coarse_generations,
@@ -133,6 +141,7 @@ def main(argv: list[str] | None = None) -> int:
     _progress_logger(
         f"CLI launch: resolution={config.resolution}, volume_target={config.volume_target}, "
         f"runtime_budget_hours={config.runtime_budget_hours}, enable_rl={config.enable_rl}, "
+        f"rl_device={config.rl_device}, "
         f"output_dir={args.output_dir}"
     )
     artifacts = run_multistage_search(config, progress=_progress_logger)
