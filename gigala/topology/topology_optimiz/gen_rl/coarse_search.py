@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from typing import Callable
 
 import numpy as np
 from scipy import ndimage
@@ -15,6 +16,9 @@ from .representation import apply_patch, boundary_patch_coordinates
 class SearchCandidate:
     mask: np.ndarray
     evaluation: EvalResult
+
+
+ProgressFn = Callable[[str], None]
 
 
 def _seed_population(resolution: int, size: int, volume_target: float, rng: np.random.Generator) -> list[np.ndarray]:
@@ -134,11 +138,14 @@ def run_coarse_search(
     resolution: int = 16,
     top_k: int = 8,
     deadline: float | None = None,
+    progress: ProgressFn | None = None,
 ) -> list[SearchCandidate]:
     rng = np.random.default_rng(config.random_seed)
     population = _seed_population(resolution, config.coarse_population, config.volume_target, rng)
     candidates: list[SearchCandidate] = []
     seen: set[bytes] = set()
+
+    log_every = max(1, config.coarse_generations // 10)
 
     for generation in range(config.coarse_generations):
         scored: list[SearchCandidate] = []
@@ -153,9 +160,21 @@ def run_coarse_search(
         scored.sort(key=lambda item: item.evaluation.score)
         candidates = scored[:top_k]
         elites = scored[: config.coarse_elite_count]
+        if progress and (generation == 0 or (generation + 1) % log_every == 0 or generation + 1 == config.coarse_generations):
+            if candidates:
+                best = candidates[0].evaluation
+                progress(
+                    f"coarse16 generation {generation + 1}/{config.coarse_generations}: "
+                    f"best_score={best.score:.4f}, volume={best.volume_fraction:.4f}, "
+                    f"proxy16_evals={int(evaluator.fea_counts['proxy16'])}, cache_hits={evaluator.cache_hits}"
+                )
         if deadline and time.time() >= deadline:
+            if progress:
+                progress("coarse16 deadline reached; stopping coarse search early.")
             break
         if not elites:
+            if progress:
+                progress("coarse16 produced no elites; stopping coarse search.")
             break
 
         next_population = [elite.mask.copy() for elite in elites]
@@ -181,15 +200,25 @@ def boundary_local_search(
     top_k: int,
     steps: int,
     deadline: float | None = None,
+    progress: ProgressFn | None = None,
 ) -> list[SearchCandidate]:
     results: list[SearchCandidate] = []
     rng = np.random.default_rng(config.random_seed + resolution + steps)
 
-    for seed in seeds:
+    log_every = max(1, steps // 5)
+
+    for seed_index, seed in enumerate(seeds, start=1):
         current = ensure_binary(seed)
         current_eval = evaluator.evaluate(current, fidelity)  # type: ignore[arg-type]
-        for _ in range(steps):
+        if progress:
+            progress(
+                f"{fidelity} seed {seed_index}/{len(seeds)}: "
+                f"initial_score={current_eval.score:.4f}, fea_performed={current_eval.fea_performed}"
+            )
+        for step_index in range(steps):
             if deadline and time.time() >= deadline:
+                if progress:
+                    progress(f"{fidelity} deadline reached during seed {seed_index}; stopping local search early.")
                 break
             proposals: list[tuple[np.ndarray, EvalResult]] = []
             for patch_size in patch_sizes:
@@ -218,6 +247,14 @@ def boundary_local_search(
                 current, current_eval = proposals[min(1, len(proposals) - 1)]
             else:
                 break
+            if progress and ((step_index + 1) % log_every == 0 or step_index + 1 == steps):
+                progress(
+                    f"{fidelity} seed {seed_index}/{len(seeds)} step {step_index + 1}/{steps}: "
+                    f"best_score={current_eval.score:.4f}, "
+                    f"proxy32_evals={int(evaluator.fea_counts['proxy32'])}, "
+                    f"full64_evals={int(evaluator.fea_counts['full64'])}, "
+                    f"cache_hits={evaluator.cache_hits}"
+                )
         results.append(SearchCandidate(mask=current, evaluation=current_eval))
 
     results.sort(key=lambda item: item.evaluation.score)

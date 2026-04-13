@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import numpy as np
 
 from gigala.topology.topology_optimiz.gen_rl import ProblemConfig, run_multistage_search
+from gigala.topology.topology_optimiz.gen_rl.cli import main as cli_main
 from gigala.topology.topology_optimiz.gen_rl.fem import Evaluator
 from gigala.topology.topology_optimiz.gen_rl.refine_env import build_action_catalog, compute_action_mask
 from gigala.topology.topology_optimiz.gen_rl.representation import upsample_binary_mask
@@ -116,6 +119,42 @@ class PipelineTests(unittest.TestCase):
         action_mask = compute_action_mask(mask, catalog, immutable, frontier_width=2)
         self.assertEqual(action_mask.shape[0], len(catalog))
         self.assertGreater(int(action_mask.sum()), 0)
+
+    def test_cli_runner_writes_summary_and_masks(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            exit_code = cli_main(
+                [
+                    "--resolution",
+                    "32",
+                    "--runtime-budget-hours",
+                    "0.01",
+                    "--coarse-population",
+                    "10",
+                    "--coarse-generations",
+                    "3",
+                    "--coarse-elite-count",
+                    "4",
+                    "--stage32-top-k",
+                    "4",
+                    "--stage64-top-k",
+                    "2",
+                    "--local-search-steps32",
+                    "3",
+                    "--local-search-steps64",
+                    "3",
+                    "--max-full-evals",
+                    "80",
+                    "--output-dir",
+                    tmp_dir,
+                ]
+            )
+            self.assertEqual(exit_code, 0)
+            summary_path = Path(tmp_dir) / "summary.json"
+            coarse_path = Path(tmp_dir) / "coarse16.npy"
+            refined32_path = Path(tmp_dir) / "refined32.npy"
+            self.assertTrue(summary_path.exists())
+            self.assertTrue(coarse_path.exists())
+            self.assertTrue(refined32_path.exists())
 
 
 if __name__ == "__main__":
