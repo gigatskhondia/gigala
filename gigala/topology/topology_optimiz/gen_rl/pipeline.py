@@ -85,6 +85,48 @@ def evaluate(
     return evaluator.evaluate(mask, fidelity)  # type: ignore[arg-type]
 
 
+def _evaluation_ranking_key(result: EvalResult) -> tuple[float, float, float, int]:
+    feasible_rank = 0.0 if result.passed_filters else 1.0
+    return (
+        feasible_rank,
+        float(result.score),
+        float(result.compliance),
+        int(result.smoothness),
+    )
+
+
+def _select_monotonic_refinement(
+    incumbent_mask: np.ndarray,
+    incumbent_eval: EvalResult,
+    candidate_mask: np.ndarray,
+    candidate_eval: EvalResult,
+) -> tuple[np.ndarray, EvalResult, dict[str, Any]]:
+    incumbent_key = _evaluation_ranking_key(incumbent_eval)
+    candidate_key = _evaluation_ranking_key(candidate_eval)
+    accepted = candidate_key < incumbent_key
+    if accepted:
+        reason = "accepted_better_rl_candidate"
+        selected_mask = candidate_mask
+        selected_eval = candidate_eval
+    elif not candidate_eval.passed_filters:
+        reason = f"rejected_invalid_rl_candidate:{candidate_eval.invalid_reason or 'unknown'}"
+        selected_mask = incumbent_mask
+        selected_eval = incumbent_eval
+    else:
+        reason = "rejected_non_improving_rl_candidate"
+        selected_mask = incumbent_mask
+        selected_eval = incumbent_eval
+    return selected_mask, selected_eval, {
+        "accepted": accepted,
+        "reason": reason,
+        "incumbent_score": float(incumbent_eval.score),
+        "candidate_score": float(candidate_eval.score),
+        "selected_score": float(selected_eval.score),
+        "candidate_valid": bool(candidate_eval.passed_filters),
+        "incumbent_valid": bool(incumbent_eval.passed_filters),
+    }
+
+
 def _maybe_run_rl(
     seed_mask: np.ndarray,
     config: ProblemConfig,
@@ -290,17 +332,28 @@ def run_multistage_search(config: ProblemConfig, *, progress: ProgressFn | None 
             progress=progress,
         )
         stage64_seed = stage64_candidates[0].mask
+        stage64_seed_eval = stage64_candidates[0].evaluation
         if progress:
             progress(
-                f"stage {config.resolution} seed completed: best_score={stage64_candidates[0].evaluation.score:.4f}, "
+                f"stage {config.resolution} seed completed: best_score={stage64_seed_eval.score:.4f}, "
                 f"full64_evals={int(evaluator.fea_counts['full64'])}"
             )
-        refined64 = _maybe_run_rl(stage64_seed, config, evaluator, warnings, progress=progress)
-        metrics["refined64_seed"] = _result_to_dict(stage64_candidates[0].evaluation)
-        metrics["refined64"] = _result_to_dict(evaluator.evaluate(refined64, "full64"))
+        rl_candidate = _maybe_run_rl(stage64_seed, config, evaluator, warnings, progress=progress)
+        rl_candidate_eval = evaluator.evaluate(rl_candidate, "full64")
+        refined64, refined64_eval, selection = _select_monotonic_refinement(
+            stage64_seed,
+            stage64_seed_eval,
+            rl_candidate,
+            rl_candidate_eval,
+        )
+        metrics["refined64_seed"] = _result_to_dict(stage64_seed_eval)
+        metrics["refined64_rl_candidate"] = _result_to_dict(rl_candidate_eval)
+        metrics["refined64_selection"] = selection
+        metrics["refined64"] = _result_to_dict(refined64_eval)
         if progress:
             progress(
                 f"final refined64 evaluated: score={metrics['refined64']['score']:.4f}, "
+                f"accepted_rl={selection['accepted']}, "
                 f"full64_evals={int(evaluator.fea_counts['full64'])}, cache_hits={evaluator.cache_hits}"
             )
     elif refined32 is not None:
@@ -329,16 +382,35 @@ def run_direct64_exact_search(config: ProblemConfig, *, progress: ProgressFn | N
     direct_config = dataclasses.replace(config, pipeline_mode="direct64_exact")
     artifacts = run_direct_search_core(direct_config, progress=progress)
     if not direct_config.enable_rl:
+        artifacts.metrics["final64"] = dict(artifacts.metrics["best64"])
+        artifacts.metrics["rl_selection"] = {
+            "accepted": False,
+            "reason": "rl_disabled",
+            "incumbent_score": float(artifacts.metrics["best64"]["score"]),
+            "candidate_score": float(artifacts.metrics["best64"]["score"]),
+            "selected_score": float(artifacts.metrics["best64"]["score"]),
+            "candidate_valid": bool(artifacts.metrics["best64"]["passed_filters"]),
+            "incumbent_valid": bool(artifacts.metrics["best64"]["passed_filters"]),
+        }
         return artifacts
 
     rl_start = time.time()
     rl_config = dataclasses.replace(direct_config, max_full_evals=max(direct_config.max_rl_full_evals, 1_000_000))
     evaluator = Evaluator(rl_config)
     warnings = list(artifacts.warnings)
-    refined = _maybe_run_direct_rl(artifacts.best64, rl_config, evaluator, warnings, progress=progress)
-    final_eval = evaluator.evaluate(refined, "full64")
-    artifacts.best64 = refined
-    artifacts.metrics["rl_refined64"] = _result_to_dict(final_eval)
+    direct_eval = evaluator.evaluate(artifacts.best64, "full64")
+    rl_candidate = _maybe_run_direct_rl(artifacts.best64, rl_config, evaluator, warnings, progress=progress)
+    rl_eval = evaluator.evaluate(rl_candidate, "full64")
+    selected_mask, selected_eval, selection = _select_monotonic_refinement(
+        artifacts.best64,
+        direct_eval,
+        rl_candidate,
+        rl_eval,
+    )
+    artifacts.best64 = selected_mask
+    artifacts.metrics["rl_refined64"] = _result_to_dict(rl_eval)
+    artifacts.metrics["rl_selection"] = selection
+    artifacts.metrics["final64"] = _result_to_dict(selected_eval)
     rl_counts = evaluation_snapshot(evaluator)
     artifacts.fea_counts = {
         "proxy16": float(artifacts.fea_counts.get("proxy16", 0.0) + rl_counts.get("proxy16", 0.0)),
@@ -353,11 +425,18 @@ def run_direct64_exact_search(config: ProblemConfig, *, progress: ProgressFn | N
         {
             "event": "rl_refinement",
             "full64_evals": int(artifacts.fea_counts["full64"]),
-            "best_score": float(final_eval.score),
-            "best_volume": float(final_eval.volume_fraction),
-            "best_islands": int(final_eval.islands),
+            "accepted": bool(selection["accepted"]),
+            "best_score": float(selected_eval.score),
+            "best_volume": float(selected_eval.volume_fraction),
+            "best_islands": int(selected_eval.islands),
+            "candidate_score": float(rl_eval.score),
         }
     )
+    if progress:
+        progress(
+            f"direct64 RL selection: accepted={selection['accepted']}, "
+            f"reason={selection['reason']}, final_score={selected_eval.score:.4f}"
+        )
     return artifacts
 
 

@@ -11,7 +11,7 @@ import numpy as np
 from gigala.topology.topology_optimiz.gen_rl import ProblemConfig, run_direct64_exact_search, run_multistage_search
 from gigala.topology.topology_optimiz.gen_rl.cli import main as cli_main
 from gigala.topology.topology_optimiz.gen_rl.direct_search import _init_worker, build_mutation_coverage, evaluate_exact_batch
-from gigala.topology.topology_optimiz.gen_rl.fem import Evaluator
+from gigala.topology.topology_optimiz.gen_rl.fem import EvalResult, Evaluator
 from gigala.topology.topology_optimiz.gen_rl.pipeline import _resolve_rl_device
 import gigala.topology.topology_optimiz.gen_rl.pipeline as pipeline_module
 from gigala.topology.topology_optimiz.gen_rl.refine_env import (
@@ -260,7 +260,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(next_observation.shape, (3, 64, 64))
         self.assertIn("evaluation", info)
 
-    def test_zero_max_rl_full_evals_means_unlimited(self) -> None:
+    def test_zero_max_rl_full_evals_skips_exact_rl_reward(self) -> None:
         if gym is None:
             self.skipTest("gymnasium is unavailable")
         config = ProblemConfig(
@@ -279,6 +279,68 @@ class PipelineTests(unittest.TestCase):
         _obs, _reward, terminated, _truncated, info = env.step(action)
         self.assertFalse(terminated)
         self.assertNotIn("evaluation", info)
+
+    def test_monotonic_selector_accepts_only_better_valid_candidate(self) -> None:
+        incumbent_mask = self.make_mask(64)
+        candidate_mask = np.rot90(incumbent_mask)
+        incumbent = EvalResult(
+            fidelity="full64",
+            resolution=64,
+            compliance=30.0,
+            score=30.0,
+            volume_fraction=0.56,
+            smoothness=100,
+            islands=1,
+            fea_performed=True,
+            cache_hit=False,
+            passed_filters=True,
+        )
+        better_candidate = EvalResult(
+            fidelity="full64",
+            resolution=64,
+            compliance=25.0,
+            score=25.0,
+            volume_fraction=0.57,
+            smoothness=110,
+            islands=1,
+            fea_performed=True,
+            cache_hit=False,
+            passed_filters=True,
+        )
+        worse_invalid_candidate = EvalResult(
+            fidelity="full64",
+            resolution=64,
+            compliance=1e12,
+            score=1e12,
+            volume_fraction=0.01,
+            smoothness=4,
+            islands=2,
+            fea_performed=False,
+            cache_hit=False,
+            passed_filters=False,
+            invalid_reason="volume_out_of_range",
+        )
+
+        selected_mask, selected_eval, selection = pipeline_module._select_monotonic_refinement(
+            incumbent_mask,
+            incumbent,
+            candidate_mask,
+            better_candidate,
+        )
+        self.assertTrue(selection["accepted"])
+        self.assertTrue(np.array_equal(selected_mask, candidate_mask))
+        self.assertEqual(selected_eval.score, better_candidate.score)
+
+        selected_mask, selected_eval, selection = pipeline_module._select_monotonic_refinement(
+            incumbent_mask,
+            incumbent,
+            candidate_mask,
+            worse_invalid_candidate,
+        )
+        self.assertFalse(selection["accepted"])
+        self.assertTrue(np.array_equal(selected_mask, incumbent_mask))
+        self.assertEqual(selected_eval.score, incumbent.score)
+        self.assertEqual(selection["reason"], "rejected_invalid_rl_candidate:volume_out_of_range")
 
     def test_direct_rl_is_not_skipped_when_direct_budget_is_exhausted(self) -> None:
         config = ProblemConfig(
@@ -306,6 +368,39 @@ class PipelineTests(unittest.TestCase):
 
         mocked_rl.assert_called_once()
         self.assertIn("rl_refined64", artifacts.metrics)
+        self.assertIn("final64", artifacts.metrics)
+        self.assertIn("rl_selection", artifacts.metrics)
+
+    def test_direct_rl_invalid_candidate_does_not_overwrite_best64(self) -> None:
+        config = ProblemConfig(
+            resolution=64,
+            pipeline_mode="direct64_exact",
+            enable_rl=True,
+            max_full_evals=12,
+            max_rl_full_evals=4,
+        )
+        direct_best = self.make_mask(64)
+        invalid_candidate = np.zeros((64, 64), dtype=np.uint8)
+        fake_artifacts = pipeline_module.DirectSearchArtifacts(
+            initial_population=[direct_best],
+            archive_best=[direct_best],
+            best64=direct_best.copy(),
+            metrics={"seed64": {"score": 1.0}, "best64": {"score": 1.0}},
+            fea_counts={"proxy16": 0.0, "proxy32": 0.0, "full64": 12.0, "cache_hits": 0.0, "cache_size": 1.0},
+            runtime=1.0,
+            warnings=[],
+            search_trace=[],
+        )
+
+        with patch.object(pipeline_module, "run_direct_search_core", return_value=fake_artifacts), patch.object(
+            pipeline_module, "_maybe_run_direct_rl", return_value=invalid_candidate
+        ):
+            artifacts = pipeline_module.run_direct64_exact_search(config)
+
+        self.assertTrue(np.array_equal(artifacts.best64, direct_best))
+        self.assertFalse(artifacts.metrics["rl_selection"]["accepted"])
+        self.assertEqual(artifacts.metrics["final64"]["invalid_reason"], None)
+        self.assertEqual(artifacts.metrics["rl_refined64"]["invalid_reason"], "volume_out_of_range")
 
     def test_cli_runner_writes_summary_and_masks(self) -> None:
         with TemporaryDirectory() as tmp_dir:
