@@ -72,12 +72,19 @@ class ProblemConfig:
             self.enable_rl = self.pipeline_mode != "direct64_exact"
         if isinstance(self.workers, int) and self.workers < 1:
             self.workers = 1
+        if self.max_full_evals < 0:
+            raise ValueError("max_full_evals must be >= 0.")
+        if self.max_rl_full_evals < 0:
+            raise ValueError("max_rl_full_evals must be >= 0.")
 
     @property
     def stage_resolutions(self) -> tuple[int, ...]:
         if self.pipeline_mode == "direct64_exact":
             return (self.resolution,)
         return infer_stage_resolutions(self.resolution)
+
+    def has_runtime_budget(self) -> bool:
+        return self.runtime_budget_hours > 0
 
 
 @dataclass

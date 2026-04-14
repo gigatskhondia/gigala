@@ -9,7 +9,7 @@ PIPELINE_MODE=${GEN_RL_PIPELINE_MODE:-direct64_exact}
 RESOLUTION=${GEN_RL_RESOLUTION:-64}
 VOLUME_TARGET=${GEN_RL_VOLUME_TARGET:-0.55}
 SOLVER_BACKEND=${GEN_RL_SOLVER_BACKEND:-scipy}
-RUNTIME_BUDGET_HOURS=${GEN_RL_RUNTIME_BUDGET_HOURS:-8}
+RUNTIME_BUDGET_HOURS=${GEN_RL_RUNTIME_BUDGET_HOURS:-0}
 DIRECT_POPULATION=${GEN_RL_DIRECT_POPULATION:-48}
 DIRECT_ELITE_COUNT=${GEN_RL_DIRECT_ELITE_COUNT:-8}
 DIRECT_OFFSPRING_BATCH=${GEN_RL_DIRECT_OFFSPRING_BATCH:-16}
@@ -34,7 +34,7 @@ cd "$REPO_ROOT"
 
 echo "Running full direct64 exact gen_rl pipeline from ${REPO_ROOT}"
 echo "Default output directory: ${OUTPUT_DIR}"
-echo "Defaults: RL enabled, rl_device=${RL_DEVICE}, runtime_budget_hours=${RUNTIME_BUDGET_HOURS}"
+echo "Defaults: RL enabled, rl_device=${RL_DEVICE}, runtime_budget_hours=${RUNTIME_BUDGET_HOURS}, max_full_evals=${MAX_FULL_EVALS}, max_rl_full_evals=${MAX_RL_FULL_EVALS}"
 
 exec "${PYTHON_BIN}" -m gigala.topology.topology_optimiz.gen_rl \
   ${RL_FLAG:+$RL_FLAG} \

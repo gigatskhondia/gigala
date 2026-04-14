@@ -243,6 +243,7 @@ if gym is not None:  # pragma: no cover - optional dependency
             self.support_load_mask = np.clip(support_load, 0, 1).astype(np.float32)
             self.immutable_mask = self.support_load_mask.astype(np.uint8)
             self.full_eval_calls = 0
+            self.stage_full_eval_calls = 0
             self.step_count = 0
             self.last_full_score = np.inf
             self.action_space = spaces.Discrete(len(self.catalog))
@@ -282,14 +283,15 @@ if gym is not None:  # pragma: no cover - optional dependency
             terminated = self.step_count >= self.config.max_episode_steps
             info: dict[str, Any] = {}
             reward = intermediate
-            if self.step_count % self.config.full_eval_every == 0 or terminated:
+            should_eval = self.step_count % self.config.full_eval_every == 0 or terminated
+            can_eval = self.stage_full_eval_calls < self.config.max_rl_full_evals
+            if should_eval and can_eval:
                 evaluation = self.evaluator.evaluate(self.mask, "full64")
                 self.full_eval_calls += 1
+                self.stage_full_eval_calls += 1
                 self.last_full_score = evaluation.score
                 reward = self._terminal_reward(evaluation)
                 info["evaluation"] = evaluation
-                if self.full_eval_calls >= self.config.max_rl_full_evals:
-                    terminated = True
             return self._observation(), float(reward), terminated, False, info
 
         def _intermediate_reward(self) -> float:
@@ -329,6 +331,7 @@ if gym is not None:  # pragma: no cover - optional dependency
             )
             self.step_count = 0
             self.full_eval_calls = 0
+            self.stage_full_eval_calls = 0
             self.last_evaluation = evaluator.evaluate(self.mask, "full64")
 
         def _observation(self) -> np.ndarray:
@@ -345,6 +348,12 @@ if gym is not None:  # pragma: no cover - optional dependency
             self.last_evaluation = self.evaluator.evaluate(self.mask, "full64")
             return self._observation(), {"evaluation": self.last_evaluation}
 
+        def _heuristic_reward(self) -> float:
+            volume_gap = abs(volume_fraction(self.mask) - self.config.volume_target)
+            smoothness = calculate_smoothness_metric(self.mask) / max(self.mask.size, 1)
+            islands = max(count_islands(self.mask) - 1, 0)
+            return float(-(volume_gap + 0.05 * smoothness + 0.10 * islands))
+
         def step(self, action: int):
             masks = self.action_masks()
             self.step_count += 1
@@ -358,19 +367,23 @@ if gym is not None:  # pragma: no cover - optional dependency
                 immutable_mask=self.immutable_mask,
                 support_load_mask=self.support_load_mask,
             )
-            evaluation = self.evaluator.evaluate(self.mask, "full64")
-            self.full_eval_calls += 1
-            if not evaluation.passed_filters:
-                reward = -1.0
-            elif not self.last_evaluation.passed_filters:
-                reward = float(1.0 / (1.0 + evaluation.score))
+            info: dict[str, Any] = {}
+            if self.stage_full_eval_calls < self.config.max_rl_full_evals:
+                evaluation = self.evaluator.evaluate(self.mask, "full64")
+                self.full_eval_calls += 1
+                self.stage_full_eval_calls += 1
+                if not evaluation.passed_filters:
+                    reward = -1.0
+                elif not self.last_evaluation.passed_filters:
+                    reward = float(1.0 / (1.0 + evaluation.score))
+                else:
+                    reward = float((self.last_evaluation.score - evaluation.score) / max(abs(self.last_evaluation.score), 1.0))
+                self.last_evaluation = evaluation
+                info["evaluation"] = evaluation
             else:
-                reward = float((self.last_evaluation.score - evaluation.score) / max(abs(self.last_evaluation.score), 1.0))
-            self.last_evaluation = evaluation
+                reward = self._heuristic_reward()
             terminated = self.step_count >= min(self.config.max_episode_steps, 64)
-            if self.full_eval_calls >= self.config.max_rl_full_evals:
-                terminated = True
-            return self._observation(), reward, terminated, False, {"evaluation": evaluation}
+            return self._observation(), reward, terminated, False, info
 
         def render(self):
             return self.mask.copy()

@@ -4,6 +4,7 @@ import unittest
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 import numpy as np
 
@@ -12,6 +13,7 @@ from gigala.topology.topology_optimiz.gen_rl.cli import main as cli_main
 from gigala.topology.topology_optimiz.gen_rl.direct_search import _init_worker, build_mutation_coverage, evaluate_exact_batch
 from gigala.topology.topology_optimiz.gen_rl.fem import Evaluator
 from gigala.topology.topology_optimiz.gen_rl.pipeline import _resolve_rl_device
+import gigala.topology.topology_optimiz.gen_rl.pipeline as pipeline_module
 from gigala.topology.topology_optimiz.gen_rl.refine_env import (
     build_action_catalog,
     compute_action_mask,
@@ -62,6 +64,17 @@ class EvaluatorTests(unittest.TestCase):
         self.assertTrue(second.cache_hit)
         self.assertAlmostEqual(first.compliance, second.compliance)
         self.assertAlmostEqual(first.score, second.score)
+
+    def test_zero_max_full_evals_blocks_exact_evaluation(self) -> None:
+        config = ProblemConfig(resolution=64, enable_rl=False, max_full_evals=0)
+        evaluator = Evaluator(config)
+        mask = self.make_mask(64)
+
+        first = evaluator.evaluate(mask, "full64")
+        self.assertFalse(first.passed_filters)
+        self.assertFalse(first.fea_performed)
+        self.assertEqual(first.invalid_reason, "full_eval_budget_exhausted")
+        self.assertEqual(evaluator.fea_counts["full64"], 0)
 
     def test_proxy_ranking_correlates_with_upsampled_full_ranking(self) -> None:
         config = ProblemConfig(resolution=32, enable_rl=False, max_full_evals=200)
@@ -168,6 +181,24 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(artifacts.fea_counts["proxy32"], 0.0)
         self.assertGreater(artifacts.fea_counts["full64"], 0.0)
 
+    def test_runtime_budget_zero_uses_full_eval_budget_as_stop_factor(self) -> None:
+        config = ProblemConfig(
+            resolution=64,
+            pipeline_mode="direct64_exact",
+            enable_rl=False,
+            runtime_budget_hours=0,
+            direct_population=4,
+            direct_elite_count=2,
+            direct_offspring_batch=2,
+            direct_archive_size=3,
+            direct_restart_stagnation_evals=12,
+            max_full_evals=12,
+            workers=1,
+        )
+        artifacts = run_direct64_exact_search(config)
+        self.assertEqual(artifacts.fea_counts["full64"], 12.0)
+        self.assertIn("direct64 full64 evaluation budget exhausted", artifacts.warnings)
+
     def test_direct_mutation_coverage_reaches_every_cell(self) -> None:
         coverage = build_mutation_coverage(64)
         self.assertEqual(coverage.shape, (64, 64))
@@ -228,6 +259,53 @@ class PipelineTests(unittest.TestCase):
         next_observation, _reward, _terminated, _truncated, info = env.step(action)
         self.assertEqual(next_observation.shape, (3, 64, 64))
         self.assertIn("evaluation", info)
+
+    def test_zero_max_rl_full_evals_means_unlimited(self) -> None:
+        if gym is None:
+            self.skipTest("gymnasium is unavailable")
+        config = ProblemConfig(
+            resolution=64,
+            pipeline_mode="direct64_exact",
+            enable_rl=False,
+            max_full_evals=40,
+            max_rl_full_evals=0,
+            max_episode_steps=64,
+        )
+        seed = self.make_mask(64)
+        env = make_direct64_refine_env(seed, config)
+        env.reset()
+        action_masks = env.action_masks()
+        action = int(np.flatnonzero(action_masks)[0])
+        _obs, _reward, terminated, _truncated, info = env.step(action)
+        self.assertFalse(terminated)
+        self.assertNotIn("evaluation", info)
+
+    def test_direct_rl_is_not_skipped_when_direct_budget_is_exhausted(self) -> None:
+        config = ProblemConfig(
+            resolution=64,
+            pipeline_mode="direct64_exact",
+            enable_rl=True,
+            max_full_evals=12,
+            max_rl_full_evals=4,
+        )
+        fake_artifacts = pipeline_module.DirectSearchArtifacts(
+            initial_population=[self.make_mask(64)],
+            archive_best=[self.make_mask(64)],
+            best64=self.make_mask(64),
+            metrics={"seed64": {"score": 1.0}, "best64": {"score": 1.0}},
+            fea_counts={"proxy16": 0.0, "proxy32": 0.0, "full64": 12.0, "cache_hits": 0.0, "cache_size": 1.0},
+            runtime=1.0,
+            warnings=[],
+            search_trace=[],
+        )
+
+        with patch.object(pipeline_module, "run_direct_search_core", return_value=fake_artifacts), patch.object(
+            pipeline_module, "_maybe_run_direct_rl", return_value=self.make_mask(64)
+        ) as mocked_rl:
+            artifacts = pipeline_module.run_direct64_exact_search(config)
+
+        mocked_rl.assert_called_once()
+        self.assertIn("rl_refined64", artifacts.metrics)
 
     def test_cli_runner_writes_summary_and_masks(self) -> None:
         with TemporaryDirectory() as tmp_dir:

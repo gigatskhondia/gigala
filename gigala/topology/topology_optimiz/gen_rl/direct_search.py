@@ -444,7 +444,7 @@ def _merge_archive(archive: Sequence[DirectCandidate], candidates: Sequence[Dire
 
 def run_direct_search_core(config: ProblemConfig, *, progress: ProgressFn | None = None) -> DirectSearchArtifacts:
     start = time.time()
-    deadline = start + config.runtime_budget_hours * 3600.0
+    deadline = start + config.runtime_budget_hours * 3600.0 if config.has_runtime_budget() else None
     evaluator = Evaluator(config)
     rng = np.random.default_rng(config.random_seed)
     warnings: list[str] = []
@@ -489,10 +489,10 @@ def run_direct_search_core(config: ProblemConfig, *, progress: ProgressFn | None
             }
         )
 
-        while time.time() < deadline and int(evaluator.fea_counts["full64"]) < config.max_full_evals:
+        while (deadline is None or time.time() < deadline) and int(evaluator.fea_counts["full64"]) < config.max_full_evals:
             elites = _select_best(population, max(1, config.direct_elite_count))
             offspring_masks: list[np.ndarray] = []
-            while len(offspring_masks) < config.direct_offspring_batch and time.time() < deadline:
+            while len(offspring_masks) < config.direct_offspring_batch and (deadline is None or time.time() < deadline):
                 if rng.random() < 0.75 and len(elites) >= 2:
                     parent_a = elites[int(rng.integers(0, len(elites)))].mask
                     parent_b = elites[int(rng.integers(0, len(elites)))].mask

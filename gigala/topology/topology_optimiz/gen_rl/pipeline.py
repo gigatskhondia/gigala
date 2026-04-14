@@ -203,7 +203,7 @@ def _maybe_run_direct_rl(
 
 def run_multistage_search(config: ProblemConfig, *, progress: ProgressFn | None = None) -> StageArtifacts:
     start = time.time()
-    deadline = start + config.runtime_budget_hours * 3600.0
+    deadline = start + config.runtime_budget_hours * 3600.0 if config.has_runtime_budget() else None
     evaluator = Evaluator(config)
     warnings: list[str] = []
     stage_resolutions = infer_stage_resolutions(config.resolution)
@@ -332,14 +332,7 @@ def run_direct64_exact_search(config: ProblemConfig, *, progress: ProgressFn | N
         return artifacts
 
     rl_start = time.time()
-    remaining_full_budget = max(0, int(direct_config.max_full_evals) - int(artifacts.fea_counts["full64"]))
-    if remaining_full_budget <= 0:
-        artifacts.warnings = [*artifacts.warnings, "Skipping direct64 RL because the full64 budget is exhausted."]
-        if progress:
-            progress("Skipping direct64 RL because the full64 budget is exhausted.")
-        return artifacts
-
-    rl_config = dataclasses.replace(direct_config, max_full_evals=remaining_full_budget)
+    rl_config = dataclasses.replace(direct_config, max_full_evals=max(direct_config.max_rl_full_evals, 1_000_000))
     evaluator = Evaluator(rl_config)
     warnings = list(artifacts.warnings)
     refined = _maybe_run_direct_rl(artifacts.best64, rl_config, evaluator, warnings, progress=progress)
