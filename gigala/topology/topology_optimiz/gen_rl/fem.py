@@ -23,12 +23,14 @@ from .metrics import (
 from .representation import infer_stage_resolutions
 
 
+PipelineMode = Literal["multistage", "direct64_exact"]
 Fidelity = Literal["proxy16", "proxy32", "full64"]
 
 
 @dataclass
 class ProblemConfig:
     resolution: int
+    pipeline_mode: PipelineMode = "multistage"
     volume_target: float = 0.55
     load_case: str = "cantilever"
     solver_backend: str = "scipy"
@@ -42,9 +44,15 @@ class ProblemConfig:
     frontier_width: int = 2
     local_search_steps32: int = 48
     local_search_steps64: int = 96
+    direct_population: int = 48
+    direct_elite_count: int = 8
+    direct_offspring_batch: int = 16
+    direct_archive_size: int = 32
+    direct_restart_stagnation_evals: int = 400
+    workers: int | str = "auto"
     full_eval_every: int = 16
     max_episode_steps: int = 256
-    enable_rl: bool = True
+    enable_rl: bool | None = None
     rl_device: str = "auto"
     rl_total_timesteps: int = 100_000
     max_full_evals: int = 20_000
@@ -59,8 +67,16 @@ class ProblemConfig:
     proxy_filter_quantile: float = 0.35
     notes: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        if self.enable_rl is None:
+            self.enable_rl = self.pipeline_mode != "direct64_exact"
+        if isinstance(self.workers, int) and self.workers < 1:
+            self.workers = 1
+
     @property
     def stage_resolutions(self) -> tuple[int, ...]:
+        if self.pipeline_mode == "direct64_exact":
+            return (self.resolution,)
         return infer_stage_resolutions(self.resolution)
 
 
@@ -201,6 +217,62 @@ class Evaluator:
             return 32 if self.config.resolution >= 32 else self.config.resolution
         return self.config.resolution
 
+    def canonicalize(self, mask: np.ndarray, fidelity: Fidelity) -> tuple[np.ndarray, MeshSetup]:
+        resolution = self._fidelity_resolution(fidelity)
+        if resolution not in self.setups:
+            self.setups[resolution] = _build_setup(resolution, self.config.density_floor)
+        setup = self.setups[resolution]
+
+        binary = ensure_binary(mask)
+        if binary.shape != (resolution, resolution):
+            raise ValueError(f"Mask shape {binary.shape} does not match fidelity resolution {resolution}.")
+        processed = prune_isolated_cells(binary)
+        processed = np.maximum(processed, setup.support_mask)
+        processed = np.maximum(processed, setup.load_mask)
+        processed = retain_components_touching_region(processed, setup.support_mask)
+        return processed, setup
+
+    def cache_key_for(self, mask: np.ndarray, fidelity: Fidelity) -> tuple[tuple[Fidelity, str], np.ndarray, MeshSetup]:
+        processed, setup = self.canonicalize(mask, fidelity)
+        return (fidelity, self._mask_digest(processed)), processed, setup
+
+    def cached_result(self, cache_key: tuple[Fidelity, str]) -> EvalResult | None:
+        cached = self.cache.get(cache_key)
+        if cached is None:
+            return None
+        self.cache_hits += 1
+        return dataclasses.replace(cached, cache_hit=True)
+
+    def screen_processed(self, processed: np.ndarray, fidelity: Fidelity, setup: MeshSetup | None = None) -> EvalResult | None:
+        resolution = self._fidelity_resolution(fidelity)
+        setup = setup or self.setups[resolution]
+        passed, invalid_reason = self._screen_geometry(processed, setup)
+        if not passed:
+            return self.make_invalid_result(processed, fidelity, invalid_reason or "failed_filters")
+        if fidelity == "full64" and self.fea_counts["full64"] >= self.config.max_full_evals:
+            return self.make_invalid_result(processed, fidelity, "full_eval_budget_exhausted")
+        return None
+
+    def make_invalid_result(self, processed: np.ndarray, fidelity: Fidelity, reason: str) -> EvalResult:
+        resolution = self._fidelity_resolution(fidelity)
+        return EvalResult(
+            fidelity=fidelity,
+            resolution=resolution,
+            compliance=self.config.invalid_penalty,
+            score=self.config.invalid_penalty,
+            volume_fraction=volume_fraction(processed),
+            smoothness=calculate_smoothness_metric(processed),
+            islands=count_islands(processed),
+            fea_performed=False,
+            cache_hit=False,
+            passed_filters=False,
+            invalid_reason=reason,
+        )
+
+    def store_result(self, processed: np.ndarray, fidelity: Fidelity, result: EvalResult) -> None:
+        cache_key = (fidelity, self._mask_digest(processed))
+        self.cache[cache_key] = dataclasses.replace(result, cache_hit=False)
+
     def _screen_geometry(self, mask: np.ndarray, setup: MeshSetup) -> tuple[bool, str | None]:
         volume = volume_fraction(mask)
         if volume == 0:
@@ -267,57 +339,15 @@ class Evaluator:
 
     def evaluate(self, mask: np.ndarray, fidelity: Fidelity) -> EvalResult:
         resolution = self._fidelity_resolution(fidelity)
-        if resolution not in self.setups:
-            self.setups[resolution] = _build_setup(resolution, self.config.density_floor)
-        setup = self.setups[resolution]
+        cache_key, processed, setup = self.cache_key_for(mask, fidelity)
+        cached = self.cached_result(cache_key)
+        if cached is not None:
+            return cached
 
-        binary = ensure_binary(mask)
-        if binary.shape != (resolution, resolution):
-            raise ValueError(f"Mask shape {binary.shape} does not match fidelity resolution {resolution}.")
-        processed = prune_isolated_cells(binary)
-        processed = np.maximum(processed, setup.support_mask)
-        processed = np.maximum(processed, setup.load_mask)
-        processed = retain_components_touching_region(processed, setup.support_mask)
-        cache_key = (fidelity, self._mask_digest(processed))
-        if cache_key in self.cache:
-            self.cache_hits += 1
-            cached = self.cache[cache_key]
-            return dataclasses.replace(cached, cache_hit=True)
-
-        passed, invalid_reason = self._screen_geometry(processed, setup)
-        if not passed:
-            result = EvalResult(
-                fidelity=fidelity,
-                resolution=resolution,
-                compliance=self.config.invalid_penalty,
-                score=self.config.invalid_penalty,
-                volume_fraction=volume_fraction(processed),
-                smoothness=calculate_smoothness_metric(processed),
-                islands=count_islands(processed),
-                fea_performed=False,
-                cache_hit=False,
-                passed_filters=False,
-                invalid_reason=invalid_reason,
-            )
-            self.cache[cache_key] = result
-            return result
-
-        if fidelity == "full64" and self.fea_counts["full64"] >= self.config.max_full_evals:
-            result = EvalResult(
-                fidelity=fidelity,
-                resolution=resolution,
-                compliance=self.config.invalid_penalty,
-                score=self.config.invalid_penalty,
-                volume_fraction=volume_fraction(processed),
-                smoothness=calculate_smoothness_metric(processed),
-                islands=count_islands(processed),
-                fea_performed=False,
-                cache_hit=False,
-                passed_filters=False,
-                invalid_reason="full_eval_budget_exhausted",
-            )
-            self.cache[cache_key] = result
-            return result
+        invalid = self.screen_processed(processed, fidelity, setup=setup)
+        if invalid is not None:
+            self.cache[cache_key] = invalid
+            return invalid
 
         try:
             density = self._physical_density(processed)

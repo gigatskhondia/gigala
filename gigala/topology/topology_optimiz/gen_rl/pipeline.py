@@ -9,6 +9,7 @@ from typing import Any, Callable
 import numpy as np
 
 from .coarse_search import SearchCandidate, boundary_local_search, run_coarse_search
+from .direct_search import DirectSearchArtifacts, run_direct_search_core
 from .fem import EvalResult, Evaluator, ProblemConfig, evaluation_snapshot
 from .representation import infer_stage_resolutions, upsample_binary_mask
 
@@ -142,6 +143,64 @@ def _maybe_run_rl(
     return base_env.render()
 
 
+def _maybe_run_direct_rl(
+    seed_mask: np.ndarray,
+    config: ProblemConfig,
+    evaluator: Evaluator,
+    warnings: list[str],
+    progress: ProgressFn | None = None,
+) -> np.ndarray:
+    if not config.enable_rl:
+        warnings.append("RL refinement disabled by config; returning direct-search best seed.")
+        if progress:
+            progress("RL refinement disabled by config; returning direct-search best seed.")
+        return seed_mask
+    try:  # pragma: no cover - optional dependency
+        os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+        import torch
+        from sb3_contrib import MaskablePPO
+        from stable_baselines3.common.monitor import Monitor
+    except Exception:
+        warnings.append("MaskablePPO dependencies are unavailable; returning direct-search best seed.")
+        if progress:
+            progress("MaskablePPO dependencies are unavailable; returning direct-search best seed.")
+        return seed_mask
+
+    from .refine_env import default_policy_kwargs, make_direct64_refine_env
+
+    device = _resolve_rl_device(config, progress=progress, torch_module=torch)
+    if progress:
+        progress(
+            f"starting direct64 RL refinement: total_timesteps={config.rl_total_timesteps}, "
+            f"max_rl_full_evals={config.max_rl_full_evals}, device={device}"
+        )
+    env = make_direct64_refine_env(seed_mask, config, evaluator=evaluator)
+    monitored = Monitor(env)
+    base_env = monitored.unwrapped
+    model = MaskablePPO(
+        "CnnPolicy",
+        monitored,
+        policy_kwargs=default_policy_kwargs(),
+        verbose=1 if progress else 0,
+        seed=config.random_seed,
+        device=device,
+    )
+    model.learn(total_timesteps=config.rl_total_timesteps)
+    if progress:
+        progress("direct64 RL training completed; running deterministic inference rollout.")
+
+    observation, _ = monitored.reset()
+    done = False
+    while not done:
+        action_masks = base_env.action_masks()
+        action, _ = model.predict(observation, action_masks=action_masks, deterministic=True)
+        observation, _reward, terminated, truncated, _info = monitored.step(action)
+        done = bool(terminated or truncated)
+    if progress:
+        progress(f"direct64 RL inference rollout completed; full64_evals={int(evaluator.fea_counts['full64'])}")
+    return base_env.render()
+
+
 def run_multistage_search(config: ProblemConfig, *, progress: ProgressFn | None = None) -> StageArtifacts:
     start = time.time()
     deadline = start + config.runtime_budget_hours * 3600.0
@@ -264,3 +323,52 @@ def run_multistage_search(config: ProblemConfig, *, progress: ProgressFn | None 
         runtime=runtime,
         warnings=warnings,
     )
+
+
+def run_direct64_exact_search(config: ProblemConfig, *, progress: ProgressFn | None = None) -> DirectSearchArtifacts:
+    direct_config = dataclasses.replace(config, pipeline_mode="direct64_exact")
+    artifacts = run_direct_search_core(direct_config, progress=progress)
+    if not direct_config.enable_rl:
+        return artifacts
+
+    rl_start = time.time()
+    remaining_full_budget = max(0, int(direct_config.max_full_evals) - int(artifacts.fea_counts["full64"]))
+    if remaining_full_budget <= 0:
+        artifacts.warnings = [*artifacts.warnings, "Skipping direct64 RL because the full64 budget is exhausted."]
+        if progress:
+            progress("Skipping direct64 RL because the full64 budget is exhausted.")
+        return artifacts
+
+    rl_config = dataclasses.replace(direct_config, max_full_evals=remaining_full_budget)
+    evaluator = Evaluator(rl_config)
+    warnings = list(artifacts.warnings)
+    refined = _maybe_run_direct_rl(artifacts.best64, rl_config, evaluator, warnings, progress=progress)
+    final_eval = evaluator.evaluate(refined, "full64")
+    artifacts.best64 = refined
+    artifacts.metrics["rl_refined64"] = _result_to_dict(final_eval)
+    rl_counts = evaluation_snapshot(evaluator)
+    artifacts.fea_counts = {
+        "proxy16": float(artifacts.fea_counts.get("proxy16", 0.0) + rl_counts.get("proxy16", 0.0)),
+        "proxy32": float(artifacts.fea_counts.get("proxy32", 0.0) + rl_counts.get("proxy32", 0.0)),
+        "full64": float(artifacts.fea_counts.get("full64", 0.0) + rl_counts.get("full64", 0.0)),
+        "cache_hits": float(artifacts.fea_counts.get("cache_hits", 0.0) + rl_counts.get("cache_hits", 0.0)),
+        "cache_size": float(max(artifacts.fea_counts.get("cache_size", 0.0), rl_counts.get("cache_size", 0.0))),
+    }
+    artifacts.warnings = warnings
+    artifacts.runtime += time.time() - rl_start
+    artifacts.search_trace.append(
+        {
+            "event": "rl_refinement",
+            "full64_evals": int(artifacts.fea_counts["full64"]),
+            "best_score": float(final_eval.score),
+            "best_volume": float(final_eval.volume_fraction),
+            "best_islands": int(final_eval.islands),
+        }
+    )
+    return artifacts
+
+
+def run_search(config: ProblemConfig, *, progress: ProgressFn | None = None) -> StageArtifacts | DirectSearchArtifacts:
+    if config.pipeline_mode == "direct64_exact":
+        return run_direct64_exact_search(config, progress=progress)
+    return run_multistage_search(config, progress=progress)
