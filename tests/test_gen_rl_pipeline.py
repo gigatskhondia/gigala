@@ -11,7 +11,7 @@ import numpy as np
 from gigala.topology.topology_optimiz.gen_rl import ProblemConfig, run_direct64_exact_search, run_multistage_search
 from gigala.topology.topology_optimiz.gen_rl.cli import main as cli_main
 from gigala.topology.topology_optimiz.gen_rl.direct_search import _init_worker, build_mutation_coverage, evaluate_exact_batch
-from gigala.topology.topology_optimiz.gen_rl.fem import EvalResult, Evaluator
+from gigala.topology.topology_optimiz.gen_rl.fem import ElementFieldDiagnostics, EvalResult, Evaluator
 from gigala.topology.topology_optimiz.gen_rl.pipeline import _resolve_rl_device
 import gigala.topology.topology_optimiz.gen_rl.pipeline as pipeline_module
 from gigala.topology.topology_optimiz.gen_rl.refine_env import (
@@ -19,6 +19,7 @@ from gigala.topology.topology_optimiz.gen_rl.refine_env import (
     build_direct_action_catalog,
     compute_action_mask,
     compute_direct_action_mask,
+    compute_direct_editable_masks,
     gym,
     make_direct64_refine_env,
 )
@@ -66,6 +67,19 @@ class EvaluatorTests(unittest.TestCase):
         self.assertTrue(second.cache_hit)
         self.assertAlmostEqual(first.compliance, second.compliance)
         self.assertAlmostEqual(first.score, second.score)
+
+    def test_evaluate_with_fields_is_cached_by_same_digest(self) -> None:
+        config = ProblemConfig(resolution=64, enable_rl=False, max_full_evals=50)
+        evaluator = Evaluator(config)
+        mask = self.make_mask(64)
+
+        first_eval, first_fields = evaluator.evaluate_with_fields(mask, "full64")
+        second_eval, second_fields = evaluator.evaluate_with_fields(mask, "full64")
+
+        self.assertTrue(first_eval.passed_filters)
+        self.assertTrue(second_eval.cache_hit)
+        self.assertEqual(first_fields.von_mises.shape, (64, 64))
+        self.assertTrue(np.allclose(first_fields.von_mises, second_fields.von_mises))
 
     def test_zero_max_full_evals_blocks_exact_evaluation(self) -> None:
         config = ProblemConfig(resolution=64, enable_rl=False, max_full_evals=0)
@@ -241,37 +255,41 @@ class PipelineTests(unittest.TestCase):
         self.assertGreater(int(action_mask.sum()), 0)
 
     def test_direct_action_mask_blocks_material_removal_below_volume_band(self) -> None:
-        resolution = 32
-        mask = np.zeros((resolution, resolution), dtype=np.uint8)
-        mask[0, 0] = 1
-        mask[0, -1] = 1
-        mask[-1, -1] = 1
-        mask[10:12, 10:12] = 1
+        resolution = 8
+        mask = np.ones((resolution, resolution), dtype=np.uint8)
+        mask[3:5, 3:5] = 0
         immutable = np.zeros_like(mask, dtype=np.uint8)
         immutable[0, 0] = 1
         immutable[0, -1] = 1
         immutable[-1, -1] = 1
-        catalog = build_direct_action_catalog(resolution)
-        action_mask = compute_direct_action_mask(
+        stress = np.zeros((resolution, resolution), dtype=float)
+        stress[2, 2] = 10.0
+        boundary_mask, hotspot_mask, union_mask = compute_direct_editable_masks(
             mask,
-            catalog,
             immutable,
-            frontier_width=2,
-            volume_target=0.55,
-            volume_tolerance=0.20,
+            stress,
+            boundary_depth=1,
+            hotspot_quantile=0.95,
+            hotspot_dilate=1,
         )
-        removable = [
-            idx
-            for idx, action in enumerate(catalog)
-            if action.kind.startswith("thin_")
-            or (
-                action.kind == "flip_1x1"
-                and mask[action.row, action.col] == 1
-                and immutable[action.row, action.col] == 0
-            )
-        ]
-        self.assertTrue(removable)
-        self.assertTrue(all(not action_mask[idx] for idx in removable))
+        catalog = build_direct_action_catalog(resolution)
+        action_mask = compute_direct_action_mask(catalog, union_mask)
+        self.assertEqual(action_mask.shape[0], len(catalog))
+        self.assertTrue(boundary_mask[0, 3])
+        self.assertTrue(boundary_mask[2, 3])  # internal hole contour
+        self.assertFalse(boundary_mask[1, 1])
+        self.assertTrue(hotspot_mask[2, 2])
+        self.assertTrue(union_mask[2, 2])
+        center_action = next(
+            idx for idx, action in enumerate(catalog) if action.kind == "remove_cell" and action.row == 2 and action.col == 2
+        )
+        interior_action = next(
+            idx for idx, action in enumerate(catalog) if action.kind == "remove_cell" and action.row == 1 and action.col == 1
+        )
+        stop_action = next(idx for idx, action in enumerate(catalog) if action.kind == "stop")
+        self.assertTrue(action_mask[center_action])
+        self.assertFalse(action_mask[interior_action])
+        self.assertTrue(action_mask[stop_action])
 
     def test_direct_env_starts_from_native_seed(self) -> None:
         if gym is None:
@@ -286,14 +304,16 @@ class PipelineTests(unittest.TestCase):
         seed = self.make_mask(64)
         env = make_direct64_refine_env(seed, config)
         observation, info = env.reset()
-        self.assertEqual(observation.shape, (3, 64, 64))
+        self.assertEqual(observation.shape, (5, 64, 64))
         self.assertIn("evaluation", info)
+        self.assertIn("rl_diagnostics", info)
         action_masks = env.action_masks()
         self.assertGreater(int(action_masks.sum()), 0)
-        action = int(np.flatnonzero(action_masks)[0])
+        action = int(np.flatnonzero(action_masks[:-1])[0])
         next_observation, _reward, _terminated, _truncated, info = env.step(action)
-        self.assertEqual(next_observation.shape, (3, 64, 64))
+        self.assertEqual(next_observation.shape, (5, 64, 64))
         self.assertIn("evaluation", info)
+        self.assertIn("rl_diagnostics", info)
 
     def test_direct_env_reverts_non_improving_exact_candidate(self) -> None:
         if gym is None:
@@ -309,7 +329,7 @@ class PipelineTests(unittest.TestCase):
         env = make_direct64_refine_env(seed, config)
         initial_mask = env.mask.copy()
         action_masks = env.action_masks()
-        action = int(np.flatnonzero(action_masks)[0])
+        action = int(np.flatnonzero(action_masks[:-1])[0])
         worse_eval = EvalResult(
             fidelity="full64",
             resolution=64,
@@ -322,7 +342,8 @@ class PipelineTests(unittest.TestCase):
             cache_hit=False,
             passed_filters=True,
         )
-        with patch.object(env.evaluator, "evaluate", return_value=worse_eval):
+        zero_fields = ElementFieldDiagnostics(von_mises=np.zeros((64, 64), dtype=float), strain_energy_density=np.zeros((64, 64), dtype=float))
+        with patch.object(env.evaluator, "evaluate_with_fields", return_value=(worse_eval, zero_fields)):
             _obs, reward, _terminated, _truncated, info = env.step(action)
         self.assertTrue(np.array_equal(env.mask, initial_mask))
         self.assertLess(reward, 0.0)
@@ -344,10 +365,29 @@ class PipelineTests(unittest.TestCase):
         env = make_direct64_refine_env(seed, config)
         env.reset()
         action_masks = env.action_masks()
-        action = int(np.flatnonzero(action_masks)[0])
+        action = int(np.flatnonzero(action_masks[:-1])[0])
         _obs, _reward, terminated, _truncated, info = env.step(action)
         self.assertFalse(terminated)
         self.assertNotIn("evaluation", info)
+        self.assertIn("rl_diagnostics", info)
+
+    def test_direct_env_stop_action_terminates(self) -> None:
+        if gym is None:
+            self.skipTest("gymnasium is unavailable")
+        config = ProblemConfig(
+            resolution=64,
+            pipeline_mode="direct64_exact",
+            enable_rl=False,
+            max_full_evals=40,
+            max_rl_full_evals=4,
+        )
+        env = make_direct64_refine_env(self.make_mask(64), config)
+        env.reset()
+        stop_idx = len(env.catalog) - 1
+        _obs, reward, terminated, _truncated, info = env.step(stop_idx)
+        self.assertTrue(terminated)
+        self.assertEqual(reward, 0.0)
+        self.assertTrue(info["stopped"])
 
     def test_monotonic_selector_accepts_only_better_valid_candidate(self) -> None:
         incumbent_mask = self.make_mask(64)
@@ -431,13 +471,15 @@ class PipelineTests(unittest.TestCase):
         )
 
         with patch.object(pipeline_module, "run_direct_search_core", return_value=fake_artifacts), patch.object(
-            pipeline_module, "_maybe_run_direct_rl", return_value=self.make_mask(64)
+            pipeline_module, "_maybe_run_direct_rl", return_value=(self.make_mask(64), {"accepted_removals": 1})
         ) as mocked_rl:
             artifacts = pipeline_module.run_direct64_exact_search(config)
 
         mocked_rl.assert_called_once()
         self.assertIn("rl_refined64", artifacts.metrics)
+        self.assertIn("rl_refined64_diagnostics", artifacts.metrics)
         self.assertIn("final64", artifacts.metrics)
+        self.assertIn("final64_diagnostics", artifacts.metrics)
         self.assertIn("rl_selection", artifacts.metrics)
         self.assertIn("rl_trials", artifacts.metrics)
 
@@ -463,7 +505,7 @@ class PipelineTests(unittest.TestCase):
         )
 
         with patch.object(pipeline_module, "run_direct_search_core", return_value=fake_artifacts), patch.object(
-            pipeline_module, "_maybe_run_direct_rl", return_value=invalid_candidate
+            pipeline_module, "_maybe_run_direct_rl", return_value=(invalid_candidate, {"accepted_removals": 0})
         ):
             artifacts = pipeline_module.run_direct64_exact_search(config)
 
@@ -496,13 +538,14 @@ class PipelineTests(unittest.TestCase):
         )
 
         with patch.object(pipeline_module, "run_direct_search_core", return_value=fake_artifacts), patch.object(
-            pipeline_module, "_maybe_run_direct_rl", side_effect=[best.copy(), second.copy()]
+            pipeline_module, "_maybe_run_direct_rl", side_effect=[(best.copy(), {"accepted_removals": 0}), (second.copy(), {"accepted_removals": 1})]
         ) as mocked_rl:
             artifacts = pipeline_module.run_direct64_exact_search(config)
 
         self.assertEqual(mocked_rl.call_count, 2)
         self.assertEqual(len(artifacts.metrics["rl_trials"]), 2)
         self.assertEqual(artifacts.metrics["rl_selection"]["seed_count"], 2)
+        self.assertIn("diagnostics", artifacts.metrics["rl_trials"][0])
 
     def test_cli_runner_writes_summary_and_masks(self) -> None:
         with TemporaryDirectory() as tmp_dir:

@@ -56,6 +56,10 @@ class ProblemConfig:
     rl_device: str = "auto"
     rl_total_timesteps: int = 100_000
     rl_archive_top_k: int = 4
+    rl_boundary_depth: int = 1
+    rl_stress_metric: Literal["von_mises"] = "von_mises"
+    rl_stress_hotspot_quantile: float = 0.95
+    rl_stress_hotspot_dilate: int = 1
     max_full_evals: int = 20_000
     max_rl_full_evals: int = 5_000
     density_floor: float = 1e-4
@@ -79,6 +83,14 @@ class ProblemConfig:
             raise ValueError("max_rl_full_evals must be >= 0.")
         if self.rl_archive_top_k < 1:
             raise ValueError("rl_archive_top_k must be >= 1.")
+        if self.rl_boundary_depth < 1:
+            raise ValueError("rl_boundary_depth must be >= 1.")
+        if self.rl_stress_metric != "von_mises":
+            raise ValueError("rl_stress_metric must be 'von_mises'.")
+        if not 0.0 < self.rl_stress_hotspot_quantile < 1.0:
+            raise ValueError("rl_stress_hotspot_quantile must be between 0 and 1.")
+        if self.rl_stress_hotspot_dilate < 0:
+            raise ValueError("rl_stress_hotspot_dilate must be >= 0.")
 
     @property
     def stage_resolutions(self) -> tuple[int, ...]:
@@ -106,6 +118,12 @@ class EvalResult:
 
 
 @dataclass
+class ElementFieldDiagnostics:
+    von_mises: np.ndarray
+    strain_energy_density: np.ndarray | None = None
+
+
+@dataclass
 class MeshSetup:
     resolution: int
     forces: np.ndarray
@@ -114,7 +132,10 @@ class MeshSetup:
     reduced_indices: np.ndarray
     keep_mask: np.ndarray
     index_map: np.ndarray
+    element_dofs: np.ndarray
     stiffness_template: np.ndarray
+    constitutive_matrix: np.ndarray
+    strain_displacement_matrix: np.ndarray
     support_mask: np.ndarray
     load_mask: np.ndarray
 
@@ -158,6 +179,28 @@ def _stiffness_matrix(young: float = 1.0, poisson: float = 0.3) -> np.ndarray:
     )
 
 
+def _constitutive_matrix(young: float = 1.0, poisson: float = 0.3) -> np.ndarray:
+    return young / (1 - poisson**2) * np.array(
+        [
+            [1.0, poisson, 0.0],
+            [poisson, 1.0, 0.0],
+            [0.0, 0.0, (1 - poisson) / 2],
+        ],
+        dtype=float,
+    )
+
+
+def _strain_displacement_matrix() -> np.ndarray:
+    dndx = np.array([-0.5, 0.5, 0.5, -0.5], dtype=float)
+    dndy = np.array([-0.5, -0.5, 0.5, 0.5], dtype=float)
+    matrix = np.zeros((3, 8), dtype=float)
+    matrix[0, 0::2] = dndx
+    matrix[1, 1::2] = dndy
+    matrix[2, 0::2] = dndy
+    matrix[2, 1::2] = dndx
+    return matrix
+
+
 def _inverse_permutation(indices: np.ndarray) -> np.ndarray:
     inverse = np.zeros(len(indices), dtype=np.int64)
     inverse[indices] = np.arange(len(indices), dtype=np.int64)
@@ -178,10 +221,10 @@ def _build_setup(resolution: int, density_floor: float) -> MeshSetup:
     n2 = (resolution + 1) * (elx + 1) + (ely + 0)
     n3 = (resolution + 1) * (elx + 1) + (ely + 1)
     n4 = (resolution + 1) * (elx + 0) + (ely + 1)
-    edof = np.array([2 * n1, 2 * n1 + 1, 2 * n2, 2 * n2 + 1, 2 * n3, 2 * n3 + 1, 2 * n4, 2 * n4 + 1])
-    edof = edof.T[0]
-    x_list = np.repeat(edof, 8)
-    y_list = np.tile(edof, 8).flatten()
+    element_dofs = np.array([2 * n1, 2 * n1 + 1, 2 * n2, 2 * n2 + 1, 2 * n3, 2 * n3 + 1, 2 * n4, 2 * n4 + 1])
+    element_dofs = element_dofs.T[0]
+    x_list = np.repeat(element_dofs, 8)
+    y_list = np.tile(element_dofs, 8).flatten()
 
     index_map = _inverse_permutation(np.concatenate([freedofs, fixdofs]))
     keep_mask = np.isin(x_list, freedofs) & np.isin(y_list, freedofs)
@@ -203,7 +246,10 @@ def _build_setup(resolution: int, density_floor: float) -> MeshSetup:
         reduced_indices=reduced_indices,
         keep_mask=keep_mask,
         index_map=index_map,
+        element_dofs=element_dofs,
         stiffness_template=_stiffness_matrix(),
+        constitutive_matrix=_constitutive_matrix(),
+        strain_displacement_matrix=_strain_displacement_matrix(),
         support_mask=support_mask,
         load_mask=load_mask,
     )
@@ -214,6 +260,7 @@ class Evaluator:
         self.config = config
         self.setups = {stage: _build_setup(stage, config.density_floor) for stage in config.stage_resolutions}
         self.cache: dict[tuple[Fidelity, str], EvalResult] = {}
+        self.field_cache: dict[tuple[Fidelity, str], ElementFieldDiagnostics] = {}
         self.fea_counts = {"proxy16": 0, "proxy32": 0, "full64": 0}
         self.cache_hits = 0
 
@@ -252,6 +299,18 @@ class Evaluator:
             return None
         self.cache_hits += 1
         return dataclasses.replace(cached, cache_hit=True)
+
+    def _copy_field_diagnostics(self, fields: ElementFieldDiagnostics) -> ElementFieldDiagnostics:
+        return ElementFieldDiagnostics(
+            von_mises=np.array(fields.von_mises, copy=True),
+            strain_energy_density=None
+            if fields.strain_energy_density is None
+            else np.array(fields.strain_energy_density, copy=True),
+        )
+
+    def _empty_field_diagnostics(self, resolution: int) -> ElementFieldDiagnostics:
+        zeros = np.zeros((resolution, resolution), dtype=float)
+        return ElementFieldDiagnostics(von_mises=zeros, strain_energy_density=zeros.copy())
 
     def screen_processed(self, processed: np.ndarray, fidelity: Fidelity, setup: MeshSetup | None = None) -> EvalResult | None:
         resolution = self._fidelity_resolution(fidelity)
@@ -302,17 +361,39 @@ class Evaluator:
         return scipy.ndimage.gaussian_filter(density, 1, mode="reflect")
 
     def _compliance(self, density: np.ndarray, displacements: np.ndarray, setup: MeshSetup) -> float:
-        n = setup.resolution
-        ely, elx = np.meshgrid(np.arange(n), np.arange(n))
-        n1 = (n + 1) * (elx + 0) + (ely + 0)
-        n2 = (n + 1) * (elx + 1) + (ely + 0)
-        n3 = (n + 1) * (elx + 1) + (ely + 1)
-        n4 = (n + 1) * (elx + 0) + (ely + 1)
-        all_ixs = np.array([2 * n1, 2 * n1 + 1, 2 * n2, 2 * n2 + 1, 2 * n3, 2 * n3 + 1, 2 * n4, 2 * n4 + 1])
-        u_selected = displacements[all_ixs]
-        ke_u = np.einsum("ij,jkl->ikl", setup.stiffness_template, u_selected)
-        ce = np.einsum("ijk,ijk->jk", u_selected, ke_u)
-        return float(np.sum(density * ce.T))
+        _, strain_energy_density = self._element_quantities(density, displacements, setup)
+        return float(np.sum(strain_energy_density))
+
+    def _element_quantities(
+        self,
+        density: np.ndarray,
+        displacements: np.ndarray,
+        setup: MeshSetup,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        u_selected = displacements[setup.element_dofs]
+        ke_u = np.einsum("ij,ek->ei", setup.stiffness_template, u_selected)
+        ce = np.einsum("ei,ei->e", u_selected, ke_u)
+        ce_grid = ce.reshape(setup.resolution, setup.resolution)
+        return u_selected, density * ce_grid
+
+    def _field_diagnostics(
+        self,
+        density: np.ndarray,
+        u_selected: np.ndarray,
+        strain_energy_density: np.ndarray,
+        setup: MeshSetup,
+    ) -> ElementFieldDiagnostics:
+        strain = np.einsum("ij,ej->ei", setup.strain_displacement_matrix, u_selected)
+        stress = np.einsum("ij,ej->ei", setup.constitutive_matrix, strain)
+        stress *= density.T.reshape(-1, 1)
+        sigma_x = stress[:, 0]
+        sigma_y = stress[:, 1]
+        tau_xy = stress[:, 2]
+        von_mises = np.sqrt(np.maximum(sigma_x**2 - sigma_x * sigma_y + sigma_y**2 + 3.0 * tau_xy**2, 0.0))
+        return ElementFieldDiagnostics(
+            von_mises=von_mises.reshape(setup.resolution, setup.resolution),
+            strain_energy_density=np.asarray(strain_energy_density, dtype=float),
+        )
 
     def _solve_displacements(self, density: np.ndarray, setup: MeshSetup) -> np.ndarray:
         kd = density.T.reshape(setup.resolution * setup.resolution, 1, 1)
@@ -393,6 +474,62 @@ class Evaluator:
             )
         self.cache[cache_key] = result
         return result
+
+    def evaluate_with_fields(self, mask: np.ndarray, fidelity: Fidelity) -> tuple[EvalResult, ElementFieldDiagnostics]:
+        resolution = self._fidelity_resolution(fidelity)
+        cache_key, processed, setup = self.cache_key_for(mask, fidelity)
+        cached_result = self.cache.get(cache_key)
+        cached_fields = self.field_cache.get(cache_key)
+        if cached_result is not None and (cached_fields is not None or not cached_result.passed_filters):
+            self.cache_hits += 1
+            result = dataclasses.replace(cached_result, cache_hit=True)
+            fields = self._copy_field_diagnostics(cached_fields) if cached_fields is not None else self._empty_field_diagnostics(resolution)
+            return result, fields
+
+        invalid = self.screen_processed(processed, fidelity, setup=setup)
+        if invalid is not None:
+            self.cache[cache_key] = invalid
+            return invalid, self._empty_field_diagnostics(resolution)
+
+        try:
+            density = self._physical_density(processed)
+            displacements = self._solve_displacements(density, setup)
+            u_selected, strain_energy_density = self._element_quantities(density, displacements, setup)
+            compliance = float(np.sum(strain_energy_density))
+            score = self._score(processed, compliance)
+            self.fea_counts[fidelity] += 1
+            result = EvalResult(
+                fidelity=fidelity,
+                resolution=resolution,
+                compliance=compliance,
+                score=score,
+                volume_fraction=volume_fraction(processed),
+                smoothness=calculate_smoothness_metric(processed),
+                islands=count_islands(processed),
+                fea_performed=True,
+                cache_hit=False,
+                passed_filters=True,
+            )
+            fields = self._field_diagnostics(density, u_selected, strain_energy_density, setup)
+            self.cache[cache_key] = result
+            self.field_cache[cache_key] = self._copy_field_diagnostics(fields)
+            return result, fields
+        except Exception as exc:  # pragma: no cover - solver failure is data dependent
+            result = EvalResult(
+                fidelity=fidelity,
+                resolution=resolution,
+                compliance=self.config.invalid_penalty,
+                score=self.config.invalid_penalty,
+                volume_fraction=volume_fraction(processed),
+                smoothness=calculate_smoothness_metric(processed),
+                islands=count_islands(processed),
+                fea_performed=False,
+                cache_hit=False,
+                passed_filters=False,
+                invalid_reason=str(exc),
+            )
+            self.cache[cache_key] = result
+            return result, self._empty_field_diagnostics(resolution)
 
 
 def evaluation_snapshot(evaluator: Evaluator) -> dict[str, float]:

@@ -209,12 +209,12 @@ def _maybe_run_direct_rl(
     evaluator: Evaluator,
     warnings: list[str],
     progress: ProgressFn | None = None,
-) -> np.ndarray:
+) -> tuple[np.ndarray, dict[str, Any]]:
     if not config.enable_rl:
         warnings.append("RL refinement disabled by config; returning direct-search best seed.")
         if progress:
             progress("RL refinement disabled by config; returning direct-search best seed.")
-        return seed_mask
+        return seed_mask, {"skipped": True, "reason": "rl_disabled"}
     try:  # pragma: no cover - optional dependency
         os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
         import torch
@@ -224,7 +224,7 @@ def _maybe_run_direct_rl(
         warnings.append("MaskablePPO dependencies are unavailable; returning direct-search best seed.")
         if progress:
             progress("MaskablePPO dependencies are unavailable; returning direct-search best seed.")
-        return seed_mask
+        return seed_mask, {"skipped": True, "reason": "missing_maskableppo_dependencies"}
 
     from .refine_env import default_policy_kwargs, make_direct64_refine_env
 
@@ -251,14 +251,31 @@ def _maybe_run_direct_rl(
 
     observation, _ = monitored.reset()
     done = False
+    last_info: dict[str, Any] = {}
     while not done:
         action_masks = base_env.action_masks()
         action, _ = model.predict(observation, action_masks=action_masks, deterministic=True)
-        observation, _reward, terminated, truncated, _info = monitored.step(action)
+        observation, _reward, terminated, truncated, last_info = monitored.step(action)
         done = bool(terminated or truncated)
+    diagnostics = base_env.rl_diagnostics() if hasattr(base_env, "rl_diagnostics") else {}
+    diagnostics = {
+        **diagnostics,
+        "device": device,
+        "rl_total_timesteps": int(config.rl_total_timesteps),
+        "last_info": last_info,
+    }
     if progress:
-        progress(f"direct64 RL inference rollout completed; full64_evals={int(evaluator.fea_counts['full64'])}")
-    return base_env.render()
+        progress(
+            "direct64 RL inference rollout completed; "
+            f"full64_evals={int(evaluator.fea_counts['full64'])}, "
+            f"boundary_candidates={diagnostics.get('boundary_candidate_count', 0)}, "
+            f"hotspot_candidates={diagnostics.get('hotspot_candidate_count', 0)}, "
+            f"union_candidates={diagnostics.get('union_candidate_count', 0)}, "
+            f"accepted_removals={diagnostics.get('accepted_removals', 0)}, "
+            f"rejected_invalid={diagnostics.get('rejected_invalid_removals', 0)}, "
+            f"rejected_non_improving={diagnostics.get('rejected_non_improving_removals', 0)}"
+        )
+    return base_env.render(), diagnostics
 
 
 def run_multistage_search(config: ProblemConfig, *, progress: ProgressFn | None = None) -> StageArtifacts:
@@ -401,6 +418,8 @@ def run_direct64_exact_search(config: ProblemConfig, *, progress: ProgressFn | N
     artifacts = run_direct_search_core(direct_config, progress=progress)
     if not direct_config.enable_rl:
         artifacts.metrics["final64"] = dict(artifacts.metrics["best64"])
+        artifacts.metrics["rl_refined64_diagnostics"] = {}
+        artifacts.metrics["final64_diagnostics"] = {}
         artifacts.metrics["rl_selection"] = {
             "accepted": False,
             "reason": "rl_disabled",
@@ -409,6 +428,7 @@ def run_direct64_exact_search(config: ProblemConfig, *, progress: ProgressFn | N
             "selected_score": float(artifacts.metrics["best64"]["score"]),
             "candidate_valid": bool(artifacts.metrics["best64"]["passed_filters"]),
             "incumbent_valid": bool(artifacts.metrics["best64"]["passed_filters"]),
+            "diagnostics": {},
         }
         artifacts.metrics["rl_trials"] = []
         return artifacts
@@ -440,6 +460,7 @@ def run_direct64_exact_search(config: ProblemConfig, *, progress: ProgressFn | N
         "incumbent_valid": bool(global_best_eval.passed_filters),
         "seed_index": 0,
         "seed_count": len(rl_seeds),
+        "diagnostics": {},
     }
 
     for seed_index, seed_mask in enumerate(rl_seeds, start=1):
@@ -450,7 +471,7 @@ def run_direct64_exact_search(config: ProblemConfig, *, progress: ProgressFn | N
                 f"direct64 RL trial {seed_index}/{len(rl_seeds)}: seed_score={seed_eval.score:.4f}, "
                 f"seed_valid={seed_eval.passed_filters}"
             )
-        rl_candidate = _maybe_run_direct_rl(seed_mask, trial_config, evaluator, warnings, progress=progress)
+        rl_candidate, rl_diagnostics = _maybe_run_direct_rl(seed_mask, trial_config, evaluator, warnings, progress=progress)
         rl_eval = evaluator.evaluate(rl_candidate, "full64")
         selected_mask, selected_eval, selection = _select_monotonic_refinement(
             seed_mask,
@@ -468,6 +489,7 @@ def run_direct64_exact_search(config: ProblemConfig, *, progress: ProgressFn | N
                 "candidate": _result_to_dict(rl_eval),
                 "selection": selection,
                 "selected": _result_to_dict(selected_eval),
+                "diagnostics": rl_diagnostics,
             }
         )
         if best_rl_candidate_eval is None or _is_better_result(rl_eval, best_rl_candidate_eval):
@@ -476,7 +498,7 @@ def run_direct64_exact_search(config: ProblemConfig, *, progress: ProgressFn | N
         if _is_better_result(selected_eval, global_best_eval):
             global_best_mask = selected_mask.copy()
             global_best_eval = selected_eval
-            overall_selection = selection
+            overall_selection = {**selection, "diagnostics": rl_diagnostics}
         artifacts.search_trace.append(
             {
                 "event": "rl_refinement_trial",
@@ -485,19 +507,34 @@ def run_direct64_exact_search(config: ProblemConfig, *, progress: ProgressFn | N
                 "candidate_score": float(rl_eval.score),
                 "accepted": bool(selection["accepted"]),
                 "selected_score": float(selected_eval.score),
+                "diagnostics": rl_diagnostics,
             }
         )
         if progress:
             progress(
                 f"direct64 RL trial {seed_index}/{len(rl_seeds)} selection: accepted={selection['accepted']}, "
-                f"reason={selection['reason']}, selected_score={selected_eval.score:.4f}"
+                f"reason={selection['reason']}, selected_score={selected_eval.score:.4f}, "
+                f"accepted_removals={rl_diagnostics.get('accepted_removals', 0)}, "
+                f"boundary_candidates={rl_diagnostics.get('boundary_candidate_count', 0)}, "
+                f"hotspot_candidates={rl_diagnostics.get('hotspot_candidate_count', 0)}"
             )
 
     artifacts.best64 = global_best_mask
     artifacts.metrics["rl_refined64"] = _result_to_dict(best_rl_candidate_eval or global_best_eval)
+    best_trial_diagnostics = {}
+    if trial_results:
+        best_trial_diagnostics = min(
+            trial_results,
+            key=lambda trial: (
+                0.0 if trial["candidate"]["passed_filters"] else 1.0,
+                float(trial["candidate"]["score"]),
+            ),
+        )["diagnostics"]
+    artifacts.metrics["rl_refined64_diagnostics"] = best_trial_diagnostics
     artifacts.metrics["rl_trials"] = trial_results
     artifacts.metrics["rl_selection"] = overall_selection
     artifacts.metrics["final64"] = _result_to_dict(global_best_eval)
+    artifacts.metrics["final64_diagnostics"] = dict(best_trial_diagnostics if overall_selection["accepted"] else {})
     rl_counts = evaluation_snapshot(evaluator)
     artifacts.fea_counts = {
         "proxy16": float(artifacts.fea_counts.get("proxy16", 0.0) + rl_counts.get("proxy16", 0.0)),
