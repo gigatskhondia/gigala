@@ -127,6 +127,24 @@ def _select_monotonic_refinement(
     }
 
 
+def _is_better_result(candidate: EvalResult, incumbent: EvalResult) -> bool:
+    return _evaluation_ranking_key(candidate) < _evaluation_ranking_key(incumbent)
+
+
+def _build_rl_seed_list(best64: np.ndarray, archive_best: list[np.ndarray], top_k: int) -> list[np.ndarray]:
+    seeds: list[np.ndarray] = []
+    seen: set[bytes] = set()
+    for mask in [best64, *archive_best]:
+        signature = np.ascontiguousarray(mask).tobytes()
+        if signature in seen:
+            continue
+        seen.add(signature)
+        seeds.append(mask.copy())
+        if len(seeds) >= top_k:
+            break
+    return seeds
+
+
 def _maybe_run_rl(
     seed_mask: np.ndarray,
     config: ProblemConfig,
@@ -392,25 +410,94 @@ def run_direct64_exact_search(config: ProblemConfig, *, progress: ProgressFn | N
             "candidate_valid": bool(artifacts.metrics["best64"]["passed_filters"]),
             "incumbent_valid": bool(artifacts.metrics["best64"]["passed_filters"]),
         }
+        artifacts.metrics["rl_trials"] = []
         return artifacts
 
     rl_start = time.time()
     rl_config = dataclasses.replace(direct_config, max_full_evals=max(direct_config.max_rl_full_evals, 1_000_000))
     evaluator = Evaluator(rl_config)
     warnings = list(artifacts.warnings)
-    direct_eval = evaluator.evaluate(artifacts.best64, "full64")
-    rl_candidate = _maybe_run_direct_rl(artifacts.best64, rl_config, evaluator, warnings, progress=progress)
-    rl_eval = evaluator.evaluate(rl_candidate, "full64")
-    selected_mask, selected_eval, selection = _select_monotonic_refinement(
-        artifacts.best64,
-        direct_eval,
-        rl_candidate,
-        rl_eval,
-    )
-    artifacts.best64 = selected_mask
-    artifacts.metrics["rl_refined64"] = _result_to_dict(rl_eval)
-    artifacts.metrics["rl_selection"] = selection
-    artifacts.metrics["final64"] = _result_to_dict(selected_eval)
+    global_best_mask = artifacts.best64.copy()
+    global_best_eval = evaluator.evaluate(global_best_mask, "full64")
+    trial_results: list[dict[str, Any]] = []
+    best_rl_candidate_mask = global_best_mask.copy()
+    best_rl_candidate_eval: EvalResult | None = None
+
+    rl_seeds = _build_rl_seed_list(artifacts.best64, artifacts.archive_best, direct_config.rl_archive_top_k)
+    if progress:
+        progress(
+            f"starting direct64 multi-start RL refinement from {len(rl_seeds)} archive seeds "
+            f"(requested_top_k={direct_config.rl_archive_top_k})"
+        )
+
+    overall_selection = {
+        "accepted": False,
+        "reason": "no_improving_rl_candidate",
+        "incumbent_score": float(global_best_eval.score),
+        "candidate_score": float(global_best_eval.score),
+        "selected_score": float(global_best_eval.score),
+        "candidate_valid": bool(global_best_eval.passed_filters),
+        "incumbent_valid": bool(global_best_eval.passed_filters),
+        "seed_index": 0,
+        "seed_count": len(rl_seeds),
+    }
+
+    for seed_index, seed_mask in enumerate(rl_seeds, start=1):
+        trial_config = dataclasses.replace(rl_config, random_seed=direct_config.random_seed + seed_index - 1)
+        seed_eval = evaluator.evaluate(seed_mask, "full64")
+        if progress:
+            progress(
+                f"direct64 RL trial {seed_index}/{len(rl_seeds)}: seed_score={seed_eval.score:.4f}, "
+                f"seed_valid={seed_eval.passed_filters}"
+            )
+        rl_candidate = _maybe_run_direct_rl(seed_mask, trial_config, evaluator, warnings, progress=progress)
+        rl_eval = evaluator.evaluate(rl_candidate, "full64")
+        selected_mask, selected_eval, selection = _select_monotonic_refinement(
+            seed_mask,
+            seed_eval,
+            rl_candidate,
+            rl_eval,
+        )
+        selection["seed_index"] = seed_index
+        selection["seed_count"] = len(rl_seeds)
+        trial_results.append(
+            {
+                "seed_index": seed_index,
+                "seed_score": float(seed_eval.score),
+                "seed_valid": bool(seed_eval.passed_filters),
+                "candidate": _result_to_dict(rl_eval),
+                "selection": selection,
+                "selected": _result_to_dict(selected_eval),
+            }
+        )
+        if best_rl_candidate_eval is None or _is_better_result(rl_eval, best_rl_candidate_eval):
+            best_rl_candidate_mask = rl_candidate.copy()
+            best_rl_candidate_eval = rl_eval
+        if _is_better_result(selected_eval, global_best_eval):
+            global_best_mask = selected_mask.copy()
+            global_best_eval = selected_eval
+            overall_selection = selection
+        artifacts.search_trace.append(
+            {
+                "event": "rl_refinement_trial",
+                "seed_index": seed_index,
+                "seed_score": float(seed_eval.score),
+                "candidate_score": float(rl_eval.score),
+                "accepted": bool(selection["accepted"]),
+                "selected_score": float(selected_eval.score),
+            }
+        )
+        if progress:
+            progress(
+                f"direct64 RL trial {seed_index}/{len(rl_seeds)} selection: accepted={selection['accepted']}, "
+                f"reason={selection['reason']}, selected_score={selected_eval.score:.4f}"
+            )
+
+    artifacts.best64 = global_best_mask
+    artifacts.metrics["rl_refined64"] = _result_to_dict(best_rl_candidate_eval or global_best_eval)
+    artifacts.metrics["rl_trials"] = trial_results
+    artifacts.metrics["rl_selection"] = overall_selection
+    artifacts.metrics["final64"] = _result_to_dict(global_best_eval)
     rl_counts = evaluation_snapshot(evaluator)
     artifacts.fea_counts = {
         "proxy16": float(artifacts.fea_counts.get("proxy16", 0.0) + rl_counts.get("proxy16", 0.0)),
@@ -425,17 +512,18 @@ def run_direct64_exact_search(config: ProblemConfig, *, progress: ProgressFn | N
         {
             "event": "rl_refinement",
             "full64_evals": int(artifacts.fea_counts["full64"]),
-            "accepted": bool(selection["accepted"]),
-            "best_score": float(selected_eval.score),
-            "best_volume": float(selected_eval.volume_fraction),
-            "best_islands": int(selected_eval.islands),
-            "candidate_score": float(rl_eval.score),
+            "seed_count": len(rl_seeds),
+            "accepted": bool(overall_selection["accepted"]),
+            "best_score": float(global_best_eval.score),
+            "best_volume": float(global_best_eval.volume_fraction),
+            "best_islands": int(global_best_eval.islands),
+            "candidate_score": float((best_rl_candidate_eval or global_best_eval).score),
         }
     )
     if progress:
         progress(
-            f"direct64 RL selection: accepted={selection['accepted']}, "
-            f"reason={selection['reason']}, final_score={selected_eval.score:.4f}"
+            f"direct64 RL selection: accepted={overall_selection['accepted']}, "
+            f"reason={overall_selection['reason']}, final_score={global_best_eval.score:.4f}"
         )
     return artifacts
 

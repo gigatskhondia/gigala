@@ -16,7 +16,9 @@ from gigala.topology.topology_optimiz.gen_rl.pipeline import _resolve_rl_device
 import gigala.topology.topology_optimiz.gen_rl.pipeline as pipeline_module
 from gigala.topology.topology_optimiz.gen_rl.refine_env import (
     build_action_catalog,
+    build_direct_action_catalog,
     compute_action_mask,
+    compute_direct_action_mask,
     gym,
     make_direct64_refine_env,
 )
@@ -238,6 +240,39 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(action_mask.shape[0], len(catalog))
         self.assertGreater(int(action_mask.sum()), 0)
 
+    def test_direct_action_mask_blocks_material_removal_below_volume_band(self) -> None:
+        resolution = 32
+        mask = np.zeros((resolution, resolution), dtype=np.uint8)
+        mask[0, 0] = 1
+        mask[0, -1] = 1
+        mask[-1, -1] = 1
+        mask[10:12, 10:12] = 1
+        immutable = np.zeros_like(mask, dtype=np.uint8)
+        immutable[0, 0] = 1
+        immutable[0, -1] = 1
+        immutable[-1, -1] = 1
+        catalog = build_direct_action_catalog(resolution)
+        action_mask = compute_direct_action_mask(
+            mask,
+            catalog,
+            immutable,
+            frontier_width=2,
+            volume_target=0.55,
+            volume_tolerance=0.20,
+        )
+        removable = [
+            idx
+            for idx, action in enumerate(catalog)
+            if action.kind.startswith("thin_")
+            or (
+                action.kind == "flip_1x1"
+                and mask[action.row, action.col] == 1
+                and immutable[action.row, action.col] == 0
+            )
+        ]
+        self.assertTrue(removable)
+        self.assertTrue(all(not action_mask[idx] for idx in removable))
+
     def test_direct_env_starts_from_native_seed(self) -> None:
         if gym is None:
             self.skipTest("gymnasium is unavailable")
@@ -259,6 +294,40 @@ class PipelineTests(unittest.TestCase):
         next_observation, _reward, _terminated, _truncated, info = env.step(action)
         self.assertEqual(next_observation.shape, (3, 64, 64))
         self.assertIn("evaluation", info)
+
+    def test_direct_env_reverts_non_improving_exact_candidate(self) -> None:
+        if gym is None:
+            self.skipTest("gymnasium is unavailable")
+        config = ProblemConfig(
+            resolution=64,
+            pipeline_mode="direct64_exact",
+            enable_rl=False,
+            max_full_evals=40,
+            max_rl_full_evals=4,
+        )
+        seed = self.make_mask(64)
+        env = make_direct64_refine_env(seed, config)
+        initial_mask = env.mask.copy()
+        action_masks = env.action_masks()
+        action = int(np.flatnonzero(action_masks)[0])
+        worse_eval = EvalResult(
+            fidelity="full64",
+            resolution=64,
+            compliance=1_000_000_000_000.0,
+            score=1_000_000_000_000.0,
+            volume_fraction=0.57,
+            smoothness=1_500,
+            islands=1,
+            fea_performed=True,
+            cache_hit=False,
+            passed_filters=True,
+        )
+        with patch.object(env.evaluator, "evaluate", return_value=worse_eval):
+            _obs, reward, _terminated, _truncated, info = env.step(action)
+        self.assertTrue(np.array_equal(env.mask, initial_mask))
+        self.assertLess(reward, 0.0)
+        self.assertTrue(info["reverted"])
+        self.assertEqual(info["revert_reason"], "non_improving_candidate")
 
     def test_zero_max_rl_full_evals_skips_exact_rl_reward(self) -> None:
         if gym is None:
@@ -370,6 +439,7 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("rl_refined64", artifacts.metrics)
         self.assertIn("final64", artifacts.metrics)
         self.assertIn("rl_selection", artifacts.metrics)
+        self.assertIn("rl_trials", artifacts.metrics)
 
     def test_direct_rl_invalid_candidate_does_not_overwrite_best64(self) -> None:
         config = ProblemConfig(
@@ -401,6 +471,38 @@ class PipelineTests(unittest.TestCase):
         self.assertFalse(artifacts.metrics["rl_selection"]["accepted"])
         self.assertEqual(artifacts.metrics["final64"]["invalid_reason"], None)
         self.assertEqual(artifacts.metrics["rl_refined64"]["invalid_reason"], "volume_out_of_range")
+
+    def test_direct_rl_runs_from_archive_top_k_seeds(self) -> None:
+        config = ProblemConfig(
+            resolution=64,
+            pipeline_mode="direct64_exact",
+            enable_rl=True,
+            rl_archive_top_k=2,
+            max_full_evals=12,
+            max_rl_full_evals=4,
+        )
+        best = self.make_mask(64)
+        second = np.rot90(best)
+        third = np.flipud(best)
+        fake_artifacts = pipeline_module.DirectSearchArtifacts(
+            initial_population=[best],
+            archive_best=[best, second, third],
+            best64=best.copy(),
+            metrics={"seed64": {"score": 1.0}, "best64": {"score": 1.0}},
+            fea_counts={"proxy16": 0.0, "proxy32": 0.0, "full64": 12.0, "cache_hits": 0.0, "cache_size": 3.0},
+            runtime=1.0,
+            warnings=[],
+            search_trace=[],
+        )
+
+        with patch.object(pipeline_module, "run_direct_search_core", return_value=fake_artifacts), patch.object(
+            pipeline_module, "_maybe_run_direct_rl", side_effect=[best.copy(), second.copy()]
+        ) as mocked_rl:
+            artifacts = pipeline_module.run_direct64_exact_search(config)
+
+        self.assertEqual(mocked_rl.call_count, 2)
+        self.assertEqual(len(artifacts.metrics["rl_trials"]), 2)
+        self.assertEqual(artifacts.metrics["rl_selection"]["seed_count"], 2)
 
     def test_cli_runner_writes_summary_and_masks(self) -> None:
         with TemporaryDirectory() as tmp_dir:

@@ -59,6 +59,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=100_000,
         help="Total timesteps for the optional RL refinement stage.",
     )
+    parser.add_argument(
+        "--rl-archive-top-k",
+        type=int,
+        default=4,
+        help="How many top direct-search archive seeds should get an RL refinement run.",
+    )
     parser.add_argument("--coarse-population", type=int, default=128, help="Population size for the 16x16 coarse stage.")
     parser.add_argument("--coarse-generations", type=int, default=250, help="Generations for the 16x16 coarse stage.")
     parser.add_argument("--coarse-elite-count", type=int, default=16, help="Elite count kept between generations.")
@@ -104,6 +110,7 @@ def _summary_payload(config: ProblemConfig, artifacts: Any) -> dict[str, Any]:
             "enable_rl": config.enable_rl,
             "rl_device": config.rl_device,
             "rl_total_timesteps": config.rl_total_timesteps,
+            "rl_archive_top_k": config.rl_archive_top_k,
             "coarse_population": config.coarse_population,
             "coarse_generations": config.coarse_generations,
             "coarse_elite_count": config.coarse_elite_count,
@@ -212,6 +219,7 @@ def main(argv: list[str] | None = None) -> int:
         enable_rl=args.enable_rl,
         rl_device=args.rl_device,
         rl_total_timesteps=args.rl_total_timesteps,
+        rl_archive_top_k=args.rl_archive_top_k,
         coarse_population=args.coarse_population,
         coarse_generations=args.coarse_generations,
         coarse_elite_count=args.coarse_elite_count,

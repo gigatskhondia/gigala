@@ -18,6 +18,7 @@ DIRECT_RESTART_STAGNATION_EVALS=${GEN_RL_DIRECT_RESTART_STAGNATION_EVALS:-400}
 MAX_FULL_EVALS=${GEN_RL_MAX_FULL_EVALS:-20000}
 MAX_RL_FULL_EVALS=${GEN_RL_MAX_RL_FULL_EVALS:-5000}
 RL_TOTAL_TIMESTEPS=${GEN_RL_RL_TOTAL_TIMESTEPS:-100000}
+RL_ARCHIVE_TOP_K=${GEN_RL_RL_ARCHIVE_TOP_K:-4}
 RANDOM_SEED=${GEN_RL_RANDOM_SEED:-42}
 RL_DEVICE=${GEN_RL_DEVICE:-mps}
 WORKERS=${GEN_RL_WORKERS:-auto}
@@ -34,7 +35,7 @@ cd "$REPO_ROOT"
 
 echo "Running full direct64 exact gen_rl pipeline from ${REPO_ROOT}"
 echo "Default output directory: ${OUTPUT_DIR}"
-echo "Defaults: RL enabled, rl_device=${RL_DEVICE}, runtime_budget_hours=${RUNTIME_BUDGET_HOURS}, max_full_evals=${MAX_FULL_EVALS}, max_rl_full_evals=${MAX_RL_FULL_EVALS}"
+echo "Defaults: RL enabled, rl_device=${RL_DEVICE}, rl_archive_top_k=${RL_ARCHIVE_TOP_K}, runtime_budget_hours=${RUNTIME_BUDGET_HOURS}, max_full_evals=${MAX_FULL_EVALS}, max_rl_full_evals=${MAX_RL_FULL_EVALS}"
 
 exec "${PYTHON_BIN}" -m gigala.topology.topology_optimiz.gen_rl \
   ${RL_FLAG:+$RL_FLAG} \
@@ -51,6 +52,7 @@ exec "${PYTHON_BIN}" -m gigala.topology.topology_optimiz.gen_rl \
   --direct-restart-stagnation-evals "${DIRECT_RESTART_STAGNATION_EVALS}" \
   --workers "${WORKERS}" \
   --rl-total-timesteps "${RL_TOTAL_TIMESTEPS}" \
+  --rl-archive-top-k "${RL_ARCHIVE_TOP_K}" \
   --max-full-evals "${MAX_FULL_EVALS}" \
   --max-rl-full-evals "${MAX_RL_FULL_EVALS}" \
   --random-seed "${RANDOM_SEED}" \

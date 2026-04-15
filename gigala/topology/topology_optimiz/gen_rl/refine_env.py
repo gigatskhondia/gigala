@@ -120,32 +120,81 @@ def build_direct_action_catalog(resolution: int) -> list[DirectGridAction]:
     return actions
 
 
+def _volume_bounds(volume_target: float, volume_tolerance: float) -> tuple[float, float]:
+    lower = max(0.0, float(volume_target - volume_tolerance))
+    upper = min(1.0, float(volume_target + volume_tolerance))
+    return lower, upper
+
+
+def _volume_guard_allows(current_fraction: float, predicted_fraction: float, lower_bound: float, upper_bound: float) -> bool:
+    epsilon = 1e-9
+    if lower_bound - epsilon <= current_fraction <= upper_bound + epsilon:
+        return lower_bound - epsilon <= predicted_fraction <= upper_bound + epsilon
+    if current_fraction < lower_bound:
+        return predicted_fraction >= current_fraction - epsilon and predicted_fraction <= upper_bound + epsilon
+    return predicted_fraction <= current_fraction + epsilon and predicted_fraction >= lower_bound - epsilon
+
+
+def _direct_action_material_delta(mask: np.ndarray, action: DirectGridAction, immutable_mask: np.ndarray) -> int:
+    if action.kind == "cleanup" or action.size == 0:
+        return 0
+    patch = mask[action.row : action.row + action.size, action.col : action.col + action.size]
+    mutable_patch = immutable_mask[action.row : action.row + action.size, action.col : action.col + action.size] == 0
+    mutable_values = patch[mutable_patch]
+    ones = int(mutable_values.sum())
+    zeros = int(mutable_values.size - ones)
+    if action.kind == "flip_1x1":
+        return 1 if zeros == 1 else -1 if ones == 1 else 0
+    if action.kind.startswith("toggle_"):
+        return zeros - ones
+    if action.kind.startswith("thin_"):
+        return -ones
+    if action.kind.startswith("thicken_"):
+        return zeros
+    return 0
+
+
 def compute_direct_action_mask(
     mask: np.ndarray,
     catalog: list[DirectGridAction],
     immutable_mask: np.ndarray,
     frontier_width: int,
+    *,
+    volume_target: float,
+    volume_tolerance: float,
 ) -> np.ndarray:
     binary = ensure_binary(mask)
     frontier = frontier_band(binary, width=frontier_width)
+    current_fraction = volume_fraction(binary)
+    lower_bound, upper_bound = _volume_bounds(volume_target, volume_tolerance)
+    min_volume_step = 1.0 / max(binary.size, 1)
     valid = np.zeros(len(catalog), dtype=bool)
     for idx, action in enumerate(catalog):
         if action.kind == "cleanup":
-            valid[idx] = count_islands(binary) > 1 or calculate_smoothness_metric(binary) > binary.shape[0]
+            valid[idx] = (
+                (count_islands(binary) > 1 or calculate_smoothness_metric(binary) > binary.shape[0])
+                and current_fraction >= lower_bound + min_volume_step
+            )
             continue
         patch = binary[action.row : action.row + action.size, action.col : action.col + action.size]
         immutable_patch = immutable_mask[action.row : action.row + action.size, action.col : action.col + action.size]
         frontier_patch = frontier[action.row : action.row + action.size, action.col : action.col + action.size]
         if patch.shape != (action.size, action.size):
             continue
+        preliminarily_valid = False
         if action.kind == "flip_1x1":
-            valid[idx] = immutable_patch.sum() == 0 and frontier_patch.any()
+            preliminarily_valid = immutable_patch.sum() == 0 and frontier_patch.any()
         elif action.kind.startswith("toggle_"):
-            valid[idx] = immutable_patch.sum() == 0 and frontier_patch.any()
+            preliminarily_valid = immutable_patch.sum() == 0 and frontier_patch.any()
         elif action.kind.startswith("thin_"):
-            valid[idx] = patch.any() and immutable_patch.sum() == 0 and frontier_patch.any()
+            preliminarily_valid = patch.any() and immutable_patch.sum() == 0 and frontier_patch.any()
         elif action.kind.startswith("thicken_"):
-            valid[idx] = (patch == 0).any() and frontier_patch.any()
+            preliminarily_valid = (patch == 0).any() and frontier_patch.any()
+        if not preliminarily_valid:
+            continue
+        delta = _direct_action_material_delta(binary, action, immutable_mask)
+        predicted_fraction = current_fraction + float(delta) / max(binary.size, 1)
+        valid[idx] = _volume_guard_allows(current_fraction, predicted_fraction, lower_bound, upper_bound)
     return valid
 
 
@@ -338,7 +387,14 @@ if gym is not None:  # pragma: no cover - optional dependency
             return stack_observation(self.mask, self.support_load_mask, frontier_width=self.config.frontier_width).astype(np.float32)
 
         def action_masks(self) -> np.ndarray:
-            return compute_direct_action_mask(self.mask, self.catalog, self.immutable_mask, self.config.frontier_width)
+            return compute_direct_action_mask(
+                self.mask,
+                self.catalog,
+                self.immutable_mask,
+                self.config.frontier_width,
+                volume_target=self.config.volume_target,
+                volume_tolerance=self.config.volume_tolerance,
+            )
 
         def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
             super().reset(seed=seed)
@@ -348,10 +404,11 @@ if gym is not None:  # pragma: no cover - optional dependency
             self.last_evaluation = self.evaluator.evaluate(self.mask, "full64")
             return self._observation(), {"evaluation": self.last_evaluation}
 
-        def _heuristic_reward(self) -> float:
-            volume_gap = abs(volume_fraction(self.mask) - self.config.volume_target)
-            smoothness = calculate_smoothness_metric(self.mask) / max(self.mask.size, 1)
-            islands = max(count_islands(self.mask) - 1, 0)
+        def _heuristic_reward(self, mask: np.ndarray | None = None) -> float:
+            binary = self.mask if mask is None else ensure_binary(mask)
+            volume_gap = abs(volume_fraction(binary) - self.config.volume_target)
+            smoothness = calculate_smoothness_metric(binary) / max(binary.size, 1)
+            islands = max(count_islands(binary) - 1, 0)
             return float(-(volume_gap + 0.05 * smoothness + 0.10 * islands))
 
         def step(self, action: int):
@@ -361,27 +418,55 @@ if gym is not None:  # pragma: no cover - optional dependency
                 terminated = self.step_count >= min(self.config.max_episode_steps, 64)
                 return self._observation(), -1.0, terminated, False, {"invalid_action": True}
 
-            self.mask = apply_direct_action(
-                self.mask,
+            previous_mask = self.mask.copy()
+            previous_evaluation = self.last_evaluation
+            previous_heuristic = self._heuristic_reward(previous_mask)
+            candidate_mask = apply_direct_action(
+                previous_mask,
                 self.catalog[action],
                 immutable_mask=self.immutable_mask,
                 support_load_mask=self.support_load_mask,
             )
             info: dict[str, Any] = {}
             if self.stage_full_eval_calls < self.config.max_rl_full_evals:
-                evaluation = self.evaluator.evaluate(self.mask, "full64")
+                evaluation = self.evaluator.evaluate(candidate_mask, "full64")
                 self.full_eval_calls += 1
                 self.stage_full_eval_calls += 1
                 if not evaluation.passed_filters:
+                    self.mask = previous_mask
                     reward = -1.0
-                elif not self.last_evaluation.passed_filters:
+                    info["reverted"] = True
+                    info["revert_reason"] = "invalid_candidate"
+                elif not previous_evaluation.passed_filters:
+                    self.mask = candidate_mask
                     reward = float(1.0 / (1.0 + evaluation.score))
+                    self.last_evaluation = evaluation
+                elif evaluation.score < previous_evaluation.score:
+                    self.mask = candidate_mask
+                    reward = float(
+                        (previous_evaluation.score - evaluation.score) / max(abs(previous_evaluation.score), 1.0)
+                    )
+                    self.last_evaluation = evaluation
                 else:
-                    reward = float((self.last_evaluation.score - evaluation.score) / max(abs(self.last_evaluation.score), 1.0))
-                self.last_evaluation = evaluation
+                    self.mask = previous_mask
+                    reward = -float(
+                        min(
+                            (evaluation.score - previous_evaluation.score) / max(abs(previous_evaluation.score), 1.0),
+                            1.0,
+                        )
+                    )
+                    info["reverted"] = True
+                    info["revert_reason"] = "non_improving_candidate"
                 info["evaluation"] = evaluation
             else:
-                reward = self._heuristic_reward()
+                candidate_heuristic = self._heuristic_reward(candidate_mask)
+                reward = float(candidate_heuristic - previous_heuristic)
+                if candidate_heuristic >= previous_heuristic:
+                    self.mask = candidate_mask
+                else:
+                    self.mask = previous_mask
+                    info["reverted"] = True
+                    info["revert_reason"] = "heuristic_regression"
             terminated = self.step_count >= min(self.config.max_episode_steps, 64)
             return self._observation(), reward, terminated, False, info
 

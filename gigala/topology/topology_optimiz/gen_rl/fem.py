@@ -55,6 +55,7 @@ class ProblemConfig:
     enable_rl: bool | None = None
     rl_device: str = "auto"
     rl_total_timesteps: int = 100_000
+    rl_archive_top_k: int = 4
     max_full_evals: int = 20_000
     max_rl_full_evals: int = 5_000
     density_floor: float = 1e-4
@@ -76,6 +77,8 @@ class ProblemConfig:
             raise ValueError("max_full_evals must be >= 0.")
         if self.max_rl_full_evals < 0:
             raise ValueError("max_rl_full_evals must be >= 0.")
+        if self.rl_archive_top_k < 1:
+            raise ValueError("rl_archive_top_k must be >= 1.")
 
     @property
     def stage_resolutions(self) -> tuple[int, ...]:
