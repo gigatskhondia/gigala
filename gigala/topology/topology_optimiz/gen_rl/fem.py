@@ -60,6 +60,8 @@ class ProblemConfig:
     rl_stress_metric: Literal["von_mises"] = "von_mises"
     rl_stress_hotspot_quantile: float = 0.95
     rl_stress_hotspot_dilate: int = 1
+    rl_stop_penalty: float = 0.05
+    rl_degenerate_episode_window: int = 32
     max_full_evals: int = 20_000
     max_rl_full_evals: int = 5_000
     density_floor: float = 1e-4
@@ -91,6 +93,10 @@ class ProblemConfig:
             raise ValueError("rl_stress_hotspot_quantile must be between 0 and 1.")
         if self.rl_stress_hotspot_dilate < 0:
             raise ValueError("rl_stress_hotspot_dilate must be >= 0.")
+        if self.rl_stop_penalty < 0.0:
+            raise ValueError("rl_stop_penalty must be >= 0.")
+        if self.rl_degenerate_episode_window < 0:
+            raise ValueError("rl_degenerate_episode_window must be >= 0.")
 
     @property
     def stage_resolutions(self) -> tuple[int, ...]:

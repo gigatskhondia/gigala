@@ -83,6 +83,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=1,
         help="4-neighbor dilation radius for direct RL hotspot cells. Default: 1.",
     )
+    parser.add_argument(
+        "--rl-stop-penalty",
+        type=float,
+        default=0.05,
+        help="Penalty for an early stop without any accepted RL improvements. Default: 0.05.",
+    )
+    parser.add_argument(
+        "--rl-degenerate-episode-window",
+        type=int,
+        default=32,
+        help="Stop direct RL training early after this many immediate stop-only episodes. Default: 32.",
+    )
     parser.add_argument("--coarse-population", type=int, default=128, help="Population size for the 16x16 coarse stage.")
     parser.add_argument("--coarse-generations", type=int, default=250, help="Generations for the 16x16 coarse stage.")
     parser.add_argument("--coarse-elite-count", type=int, default=16, help="Elite count kept between generations.")
@@ -133,6 +145,8 @@ def _summary_payload(config: ProblemConfig, artifacts: Any) -> dict[str, Any]:
             "rl_stress_metric": config.rl_stress_metric,
             "rl_stress_hotspot_quantile": config.rl_stress_hotspot_quantile,
             "rl_stress_hotspot_dilate": config.rl_stress_hotspot_dilate,
+            "rl_stop_penalty": config.rl_stop_penalty,
+            "rl_degenerate_episode_window": config.rl_degenerate_episode_window,
             "coarse_population": config.coarse_population,
             "coarse_generations": config.coarse_generations,
             "coarse_elite_count": config.coarse_elite_count,
@@ -245,6 +259,8 @@ def main(argv: list[str] | None = None) -> int:
         rl_boundary_depth=args.rl_boundary_depth,
         rl_stress_hotspot_quantile=args.rl_stress_hotspot_quantile,
         rl_stress_hotspot_dilate=args.rl_stress_hotspot_dilate,
+        rl_stop_penalty=args.rl_stop_penalty,
+        rl_degenerate_episode_window=args.rl_degenerate_episode_window,
         coarse_population=args.coarse_population,
         coarse_generations=args.coarse_generations,
         coarse_elite_count=args.coarse_elite_count,

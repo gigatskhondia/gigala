@@ -28,6 +28,51 @@ class StageArtifacts:
 ProgressFn = Callable[[str], None]
 
 
+@dataclass
+class DirectRLDegeneracyMonitor:
+    episode_window: int
+    immediate_stop_flags: list[bool] = field(default_factory=list)
+    episodes_observed: int = 0
+    stopped_early: bool = False
+    reason: str | None = None
+
+    def observe_episode(self, info: dict[str, Any]) -> bool:
+        episode = info.get("episode")
+        if not isinstance(episode, dict):
+            return False
+        self.episodes_observed += 1
+        diagnostics = info.get("rl_diagnostics")
+        diagnostics = diagnostics if isinstance(diagnostics, dict) else {}
+        immediate_stop = (
+            int(episode.get("l", 0)) <= 1
+            and bool(diagnostics.get("stop_used"))
+            and bool(info.get("stop_penalty_applied"))
+            and int(diagnostics.get("accepted_removals", 0)) == 0
+        )
+        self.immediate_stop_flags.append(immediate_stop)
+        if self.episode_window > 0 and len(self.immediate_stop_flags) > self.episode_window:
+            self.immediate_stop_flags = self.immediate_stop_flags[-self.episode_window :]
+        if (
+            self.episode_window > 0
+            and len(self.immediate_stop_flags) >= self.episode_window
+            and all(self.immediate_stop_flags[-self.episode_window :])
+        ):
+            self.stopped_early = True
+            self.reason = f"degenerate_immediate_stop_policy:{self.episode_window}_episodes"
+            return True
+        return False
+
+    def snapshot(self) -> dict[str, Any]:
+        recent_window = self.immediate_stop_flags[-self.episode_window :] if self.episode_window > 0 else []
+        return {
+            "episode_window": int(self.episode_window),
+            "episodes_observed": int(self.episodes_observed),
+            "immediate_stop_episodes_in_window": int(sum(recent_window)),
+            "stopped_early": bool(self.stopped_early),
+            "reason": self.reason,
+        }
+
+
 def _result_to_dict(result: EvalResult) -> dict[str, Any]:
     return dataclasses.asdict(result)
 
@@ -218,6 +263,7 @@ def _maybe_run_direct_rl(
     try:  # pragma: no cover - optional dependency
         os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
         import torch
+        from stable_baselines3.common.callbacks import BaseCallback
         from sb3_contrib import MaskablePPO
         from stable_baselines3.common.monitor import Monitor
     except Exception:
@@ -237,6 +283,24 @@ def _maybe_run_direct_rl(
     env = make_direct64_refine_env(seed_mask, config, evaluator=evaluator)
     monitored = Monitor(env)
     base_env = monitored.unwrapped
+    degeneracy_monitor = DirectRLDegeneracyMonitor(episode_window=config.rl_degenerate_episode_window)
+
+    class _DirectRLEarlyExitCallback(BaseCallback):
+        def _on_step(self) -> bool:
+            infos = self.locals.get("infos")
+            if not isinstance(infos, list):
+                return True
+            for info in infos:
+                if isinstance(info, dict) and degeneracy_monitor.observe_episode(info):
+                    if progress:
+                        progress(
+                            "direct64 RL early exit triggered: "
+                            f"{degeneracy_monitor.reason or 'degenerate_policy_detected'}"
+                        )
+                    return False
+            return True
+
+    callback = _DirectRLEarlyExitCallback()
     model = MaskablePPO(
         "CnnPolicy",
         monitored,
@@ -245,7 +309,9 @@ def _maybe_run_direct_rl(
         seed=config.random_seed,
         device=device,
     )
-    model.learn(total_timesteps=config.rl_total_timesteps)
+    model.learn(total_timesteps=config.rl_total_timesteps, callback=callback)
+    if degeneracy_monitor.stopped_early and degeneracy_monitor.reason:
+        warnings.append(f"direct64 RL early exit: {degeneracy_monitor.reason}")
     if progress:
         progress("direct64 RL training completed; running deterministic inference rollout.")
 
@@ -262,6 +328,7 @@ def _maybe_run_direct_rl(
         **diagnostics,
         "device": device,
         "rl_total_timesteps": int(config.rl_total_timesteps),
+        "training_monitor": degeneracy_monitor.snapshot(),
         "last_info": last_info,
     }
     if progress:

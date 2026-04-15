@@ -480,12 +480,17 @@ if gym is not None:  # pragma: no cover - optional dependency
             self.last_action_source = self._source_for_action(selected_action)
             if selected_action.kind == "stop":
                 self.stop_used = True
+                editable_candidates = int(self.union_mask.sum())
+                stop_penalty_applied = editable_candidates > 0 and self.accepted_removals == 0 and self.config.rl_stop_penalty > 0.0
+                reward = -float(self.config.rl_stop_penalty) if stop_penalty_applied else 0.0
                 info = {
                     "evaluation": self.last_evaluation,
                     "stopped": True,
+                    "stop_penalty_applied": bool(stop_penalty_applied),
+                    "editable_candidates_at_stop": editable_candidates,
                     "rl_diagnostics": self._diagnostics(),
                 }
-                return self._observation(), 0.0, True, False, info
+                return self._observation(), reward, True, False, info
 
             previous_mask = self.mask.copy()
             previous_evaluation = self.last_evaluation

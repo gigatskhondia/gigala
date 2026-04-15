@@ -12,7 +12,7 @@ from gigala.topology.topology_optimiz.gen_rl import ProblemConfig, run_direct64_
 from gigala.topology.topology_optimiz.gen_rl.cli import main as cli_main
 from gigala.topology.topology_optimiz.gen_rl.direct_search import _init_worker, build_mutation_coverage, evaluate_exact_batch
 from gigala.topology.topology_optimiz.gen_rl.fem import ElementFieldDiagnostics, EvalResult, Evaluator
-from gigala.topology.topology_optimiz.gen_rl.pipeline import _resolve_rl_device
+from gigala.topology.topology_optimiz.gen_rl.pipeline import DirectRLDegeneracyMonitor, _resolve_rl_device
 import gigala.topology.topology_optimiz.gen_rl.pipeline as pipeline_module
 from gigala.topology.topology_optimiz.gen_rl.refine_env import (
     build_action_catalog,
@@ -400,8 +400,53 @@ class PipelineTests(unittest.TestCase):
         stop_idx = len(env.catalog) - 1
         _obs, reward, terminated, _truncated, info = env.step(stop_idx)
         self.assertTrue(terminated)
-        self.assertEqual(reward, 0.0)
+        self.assertLess(reward, 0.0)
         self.assertTrue(info["stopped"])
+        self.assertTrue(info["stop_penalty_applied"])
+
+    def test_direct_rl_degeneracy_monitor_triggers_on_repeated_immediate_stops(self) -> None:
+        monitor = DirectRLDegeneracyMonitor(episode_window=3)
+
+        episode_info = {
+            "episode": {"l": 1, "r": -0.05},
+            "stop_penalty_applied": True,
+            "rl_diagnostics": {
+                "stop_used": True,
+                "accepted_removals": 0,
+            },
+        }
+
+        self.assertFalse(monitor.observe_episode(episode_info))
+        self.assertFalse(monitor.observe_episode(episode_info))
+        self.assertTrue(monitor.observe_episode(episode_info))
+        snapshot = monitor.snapshot()
+        self.assertTrue(snapshot["stopped_early"])
+        self.assertEqual(snapshot["reason"], "degenerate_immediate_stop_policy:3_episodes")
+
+    def test_direct_rl_degeneracy_monitor_ignores_non_degenerate_episode(self) -> None:
+        monitor = DirectRLDegeneracyMonitor(episode_window=2)
+
+        first = {
+            "episode": {"l": 1, "r": -0.05},
+            "stop_penalty_applied": True,
+            "rl_diagnostics": {
+                "stop_used": True,
+                "accepted_removals": 0,
+            },
+        }
+        second = {
+            "episode": {"l": 4, "r": 0.02},
+            "stop_penalty_applied": False,
+            "rl_diagnostics": {
+                "stop_used": False,
+                "accepted_removals": 1,
+            },
+        }
+
+        self.assertFalse(monitor.observe_episode(first))
+        self.assertFalse(monitor.observe_episode(second))
+        snapshot = monitor.snapshot()
+        self.assertFalse(snapshot["stopped_early"])
 
     def test_monotonic_selector_accepts_only_better_valid_candidate(self) -> None:
         incumbent_mask = self.make_mask(64)
