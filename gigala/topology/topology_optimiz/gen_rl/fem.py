@@ -371,9 +371,9 @@ class Evaluator:
         setup: MeshSetup,
     ) -> tuple[np.ndarray, np.ndarray]:
         u_selected = displacements[setup.element_dofs]
-        ke_u = np.einsum("ij,ek->ei", setup.stiffness_template, u_selected)
+        ke_u = np.einsum("ij,ej->ei", setup.stiffness_template, u_selected)
         ce = np.einsum("ei,ei->e", u_selected, ke_u)
-        ce_grid = ce.reshape(setup.resolution, setup.resolution)
+        ce_grid = ce.reshape(setup.resolution, setup.resolution).T
         return u_selected, density * ce_grid
 
     def _field_diagnostics(
@@ -391,7 +391,7 @@ class Evaluator:
         tau_xy = stress[:, 2]
         von_mises = np.sqrt(np.maximum(sigma_x**2 - sigma_x * sigma_y + sigma_y**2 + 3.0 * tau_xy**2, 0.0))
         return ElementFieldDiagnostics(
-            von_mises=von_mises.reshape(setup.resolution, setup.resolution),
+            von_mises=von_mises.reshape(setup.resolution, setup.resolution).T,
             strain_energy_density=np.asarray(strain_energy_density, dtype=float),
         )
 

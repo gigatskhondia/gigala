@@ -81,6 +81,20 @@ class EvaluatorTests(unittest.TestCase):
         self.assertEqual(first_fields.von_mises.shape, (64, 64))
         self.assertTrue(np.allclose(first_fields.von_mises, second_fields.von_mises))
 
+    def test_exact_compliance_matches_force_displacement_work(self) -> None:
+        config = ProblemConfig(resolution=64, enable_rl=False, max_full_evals=50)
+        evaluator = Evaluator(config)
+        mask = self.make_mask(64)
+        processed, setup = evaluator.canonicalize(mask, "full64")
+        density = evaluator._physical_density(processed)
+        displacements = evaluator._solve_displacements(density, setup)
+
+        compliance = evaluator._compliance(density, displacements, setup)
+        external_work = float(setup.forces @ displacements)
+
+        self.assertGreater(compliance, 0.0)
+        self.assertAlmostEqual(compliance, external_work, places=3)
+
     def test_zero_max_full_evals_blocks_exact_evaluation(self) -> None:
         config = ProblemConfig(resolution=64, enable_rl=False, max_full_evals=0)
         evaluator = Evaluator(config)
