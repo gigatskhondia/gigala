@@ -30,8 +30,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--pipeline-mode",
         default="multistage",
-        choices=("multistage", "direct64_exact"),
-        help="Pipeline mode. Use direct64_exact for exact-only direct 64x64 search.",
+        choices=("multistage", "direct64_exact", "rl_only_exact"),
+        help="Pipeline mode. Use direct64_exact for exact-only direct search, or rl_only_exact for pure RL with no GA.",
     )
     parser.add_argument("--resolution", type=int, default=64, help="Final grid resolution. Default: 64.")
     parser.add_argument("--volume-target", type=float, default=0.55, help="Target material volume fraction.")
@@ -193,9 +193,15 @@ def _json_safe(value: Any) -> Any:
 def _save_outputs(output_dir: Path, artifacts: Any, config: ProblemConfig) -> dict[str, str]:
     output_dir.mkdir(parents=True, exist_ok=True)
     saved: dict[str, str] = {}
-    if config.pipeline_mode == "direct64_exact":
-        seed_path = output_dir / "seed64.npy"
-        best_path = output_dir / "best64.npy"
+    if config.pipeline_mode in ("direct64_exact", "rl_only_exact"):
+        seed_name = "seed64.npy" if config.pipeline_mode == "direct64_exact" else f"seed{config.resolution}.npy"
+        best_name = "best64.npy" if config.pipeline_mode == "direct64_exact" else f"best{config.resolution}.npy"
+        png_name = "best64.png" if config.pipeline_mode == "direct64_exact" else f"best{config.resolution}.png"
+        seed_key = "seed64" if config.pipeline_mode == "direct64_exact" else "seed"
+        best_key = "best64" if config.pipeline_mode == "direct64_exact" else "best"
+        png_key = "best64_png" if config.pipeline_mode == "direct64_exact" else "best_png"
+        seed_path = output_dir / seed_name
+        best_path = output_dir / best_name
         archive_path = output_dir / "archive.json"
         np.save(seed_path, artifacts.initial_population[0])
         np.save(best_path, artifacts.best64)
@@ -214,11 +220,11 @@ def _save_outputs(output_dir: Path, artifacts: Any, config: ProblemConfig) -> di
                 indent=2,
             )
         )
-        saved["seed64"] = str(seed_path)
-        saved["best64"] = str(best_path)
+        saved[seed_key] = str(seed_path)
+        saved[best_key] = str(best_path)
         saved["archive"] = str(archive_path)
 
-        final_png = output_dir / "best64.png"
+        final_png = output_dir / png_name
         figure = plt.figure(dpi=100)
         print("\nFinal Cantilever beam design:")
         yellow_material = ListedColormap(["#ffffff", "#ffd84d"])
@@ -227,7 +233,7 @@ def _save_outputs(output_dir: Path, artifacts: Any, config: ProblemConfig) -> di
         plt.tight_layout()
         plt.savefig(final_png, bbox_inches="tight", pad_inches=0.05)
         plt.close(figure)
-        saved["best64_png"] = str(final_png)
+        saved[png_key] = str(final_png)
     else:
         np.save(output_dir / "coarse16.npy", artifacts.coarse16)
         saved["coarse16"] = str(output_dir / "coarse16.npy")

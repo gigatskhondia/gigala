@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from gigala.topology.topology_optimiz.gen_rl import ProblemConfig, run_direct64_exact_search, run_multistage_search
+from gigala.topology.topology_optimiz.gen_rl import ProblemConfig, run_direct64_exact_search, run_multistage_search, run_rl_only_exact_search
 from gigala.topology.topology_optimiz.gen_rl.cli import _save_outputs, main as cli_main
 from gigala.topology.topology_optimiz.gen_rl.direct_search import _init_worker, build_mutation_coverage, evaluate_exact_batch
 from gigala.topology.topology_optimiz.gen_rl.fem import ElementFieldDiagnostics, EvalResult, Evaluator
@@ -208,6 +208,25 @@ class PipelineTests(unittest.TestCase):
         self.assertGreaterEqual(len(artifacts.archive_best), 1)
         self.assertIn("seed64", artifacts.metrics)
         self.assertIn("best64", artifacts.metrics)
+        self.assertEqual(artifacts.fea_counts["proxy16"], 0.0)
+        self.assertEqual(artifacts.fea_counts["proxy32"], 0.0)
+        self.assertGreater(artifacts.fea_counts["full64"], 0.0)
+
+    def test_rl_only_pipeline_returns_20x20_artifacts_without_ga(self) -> None:
+        config = ProblemConfig(
+            resolution=20,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            runtime_budget_hours=0,
+            direct_population=1,
+            max_full_evals=64,
+            max_rl_full_evals=16,
+        )
+        artifacts = run_rl_only_exact_search(config)
+        self.assertEqual(len(artifacts.initial_population), 1)
+        self.assertEqual(artifacts.best64.shape, (20, 20))
+        self.assertIn("seed", artifacts.metrics)
+        self.assertIn("final", artifacts.metrics)
         self.assertEqual(artifacts.fea_counts["proxy16"], 0.0)
         self.assertEqual(artifacts.fea_counts["proxy32"], 0.0)
         self.assertGreater(artifacts.fea_counts["full64"], 0.0)
@@ -679,6 +698,37 @@ class PipelineTests(unittest.TestCase):
             best_path = Path(tmp_dir) / "best64.npy"
             archive_path = Path(tmp_dir) / "archive.json"
             best_png_path = Path(tmp_dir) / "best64.png"
+            self.assertTrue(summary_path.exists())
+            self.assertTrue(seed_path.exists())
+            self.assertTrue(best_path.exists())
+            self.assertTrue(archive_path.exists())
+            self.assertTrue(best_png_path.exists())
+
+    def test_rl_only_cli_runner_writes_summary_and_best_mask(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            exit_code = cli_main(
+                [
+                    "--pipeline-mode",
+                    "rl_only_exact",
+                    "--no-enable-rl",
+                    "--resolution",
+                    "20",
+                    "--direct-population",
+                    "1",
+                    "--max-full-evals",
+                    "64",
+                    "--max-rl-full-evals",
+                    "16",
+                    "--output-dir",
+                    tmp_dir,
+                ]
+            )
+            self.assertEqual(exit_code, 0)
+            summary_path = Path(tmp_dir) / "summary.json"
+            seed_path = Path(tmp_dir) / "seed20.npy"
+            best_path = Path(tmp_dir) / "best20.npy"
+            archive_path = Path(tmp_dir) / "archive.json"
+            best_png_path = Path(tmp_dir) / "best20.png"
             self.assertTrue(summary_path.exists())
             self.assertTrue(seed_path.exists())
             self.assertTrue(best_path.exists())

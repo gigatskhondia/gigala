@@ -23,7 +23,7 @@ from .metrics import (
 from .representation import infer_stage_resolutions
 
 
-PipelineMode = Literal["multistage", "direct64_exact"]
+PipelineMode = Literal["multistage", "direct64_exact", "rl_only_exact"]
 Fidelity = Literal["proxy16", "proxy32", "full64"]
 
 
@@ -76,7 +76,7 @@ class ProblemConfig:
 
     def __post_init__(self) -> None:
         if self.enable_rl is None:
-            self.enable_rl = self.pipeline_mode != "direct64_exact"
+            self.enable_rl = self.pipeline_mode in ("multistage", "rl_only_exact")
         if isinstance(self.workers, int) and self.workers < 1:
             self.workers = 1
         if self.max_full_evals < 0:
@@ -100,7 +100,7 @@ class ProblemConfig:
 
     @property
     def stage_resolutions(self) -> tuple[int, ...]:
-        if self.pipeline_mode == "direct64_exact":
+        if self.pipeline_mode in ("direct64_exact", "rl_only_exact"):
             return (self.resolution,)
         return infer_stage_resolutions(self.resolution)
 

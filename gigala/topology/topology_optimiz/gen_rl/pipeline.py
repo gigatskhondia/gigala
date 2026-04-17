@@ -9,7 +9,7 @@ from typing import Any, Callable
 import numpy as np
 
 from .coarse_search import SearchCandidate, boundary_local_search, run_coarse_search
-from .direct_search import DirectSearchArtifacts, run_direct_search_core
+from .direct_search import DirectSearchArtifacts, generate_initial_population, run_direct_search_core
 from .fem import EvalResult, Evaluator, ProblemConfig, evaluation_snapshot
 from .representation import infer_stage_resolutions, upsample_binary_mask
 
@@ -632,7 +632,86 @@ def run_direct64_exact_search(config: ProblemConfig, *, progress: ProgressFn | N
     return artifacts
 
 
+def run_rl_only_exact_search(config: ProblemConfig, *, progress: ProgressFn | None = None) -> DirectSearchArtifacts:
+    rl_only_config = dataclasses.replace(
+        config,
+        pipeline_mode="rl_only_exact",
+        direct_population=max(1, config.direct_population),
+    )
+    start = time.time()
+    evaluator = Evaluator(rl_only_config)
+    warnings: list[str] = []
+    rng = np.random.default_rng(rl_only_config.random_seed)
+    seed_config = dataclasses.replace(rl_only_config, direct_population=1)
+    seed_mask = generate_initial_population(seed_config, evaluator, rng)[0]
+    seed_eval = evaluator.evaluate(seed_mask, "full64")
+    search_trace: list[dict[str, Any]] = [
+        {
+            "event": "rl_only_seed",
+            "score": float(seed_eval.score),
+            "volume": float(seed_eval.volume_fraction),
+            "passed_filters": bool(seed_eval.passed_filters),
+        }
+    ]
+    if progress:
+        progress(
+            f"rl-only exact search started: resolution={rl_only_config.resolution}, "
+            f"enable_rl={rl_only_config.enable_rl}, seed_score={seed_eval.score:.4f}"
+        )
+
+    if rl_only_config.enable_rl:
+        rl_candidate = _maybe_run_rl(seed_mask, rl_only_config, evaluator, warnings, progress=progress)
+        rl_candidate_eval = evaluator.evaluate(rl_candidate, "full64")
+    else:
+        warnings.append("RL-only pipeline launched with RL disabled; returning heuristic seed.")
+        if progress:
+            progress("RL-only pipeline launched with RL disabled; returning heuristic seed.")
+        rl_candidate = seed_mask.copy()
+        rl_candidate_eval = seed_eval
+
+    final_mask, final_eval, selection = _select_monotonic_refinement(
+        seed_mask,
+        seed_eval,
+        rl_candidate,
+        rl_candidate_eval,
+    )
+    runtime = time.time() - start
+    search_trace.append(
+        {
+            "event": "rl_only_refinement",
+            "seed_score": float(seed_eval.score),
+            "candidate_score": float(rl_candidate_eval.score),
+            "accepted": bool(selection["accepted"]),
+            "final_score": float(final_eval.score),
+        }
+    )
+    metrics: dict[str, dict[str, Any]] = {
+        "seed": _result_to_dict(seed_eval),
+        "rl_candidate": _result_to_dict(rl_candidate_eval),
+        "rl_selection": selection,
+        "final": _result_to_dict(final_eval),
+    }
+    if progress:
+        progress(
+            f"rl-only exact search finished: runtime_sec={runtime:.2f}, "
+            f"accepted_rl={selection['accepted']}, final_score={final_eval.score:.4f}, "
+            f"full64_evals={int(evaluator.fea_counts['full64'])}, cache_hits={evaluator.cache_hits}"
+        )
+    return DirectSearchArtifacts(
+        initial_population=[seed_mask.copy()],
+        archive_best=[seed_mask.copy()],
+        best64=final_mask.copy(),
+        metrics=metrics,
+        fea_counts=evaluation_snapshot(evaluator),
+        runtime=runtime,
+        warnings=warnings,
+        search_trace=search_trace,
+    )
+
+
 def run_search(config: ProblemConfig, *, progress: ProgressFn | None = None) -> StageArtifacts | DirectSearchArtifacts:
     if config.pipeline_mode == "direct64_exact":
         return run_direct64_exact_search(config, progress=progress)
+    if config.pipeline_mode == "rl_only_exact":
+        return run_rl_only_exact_search(config, progress=progress)
     return run_multistage_search(config, progress=progress)
