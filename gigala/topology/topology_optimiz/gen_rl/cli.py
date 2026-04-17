@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
 import sys
@@ -171,6 +172,24 @@ def _summary_payload(config: ProblemConfig, artifacts: Any) -> dict[str, Any]:
     }
 
 
+def _json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, np.generic):
+        return value.item()
+    if dataclasses.is_dataclass(value):
+        return _json_safe(dataclasses.asdict(value))
+    if isinstance(value, np.ndarray):
+        return _json_safe(value.tolist())
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(item) for item in value]
+    return repr(value)
+
+
 def _save_outputs(output_dir: Path, artifacts: Any, config: ProblemConfig) -> dict[str, str]:
     output_dir.mkdir(parents=True, exist_ok=True)
     saved: dict[str, str] = {}
@@ -189,7 +208,12 @@ def _save_outputs(output_dir: Path, artifacts: Any, config: ProblemConfig) -> di
             }
             for index, mask in enumerate(artifacts.archive_best)
         ]
-        archive_path.write_text(json.dumps({"entries": archive_entries, "search_trace": artifacts.search_trace}, indent=2))
+        archive_path.write_text(
+            json.dumps(
+                _json_safe({"entries": archive_entries, "search_trace": artifacts.search_trace}),
+                indent=2,
+            )
+        )
         saved["seed64"] = str(seed_path)
         saved["best64"] = str(best_path)
         saved["archive"] = str(archive_path)
@@ -227,7 +251,7 @@ def _save_outputs(output_dir: Path, artifacts: Any, config: ProblemConfig) -> di
     summary = _summary_payload(config, artifacts)
     summary["saved_masks"] = saved
     summary_path = output_dir / "summary.json"
-    summary_path.write_text(json.dumps(summary, indent=2))
+    summary_path.write_text(json.dumps(_json_safe(summary), indent=2))
     return {"summary": str(summary_path), **saved}
 
 

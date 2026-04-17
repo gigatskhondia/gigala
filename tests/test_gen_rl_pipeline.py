@@ -4,12 +4,13 @@ import unittest
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
 
 from gigala.topology.topology_optimiz.gen_rl import ProblemConfig, run_direct64_exact_search, run_multistage_search
-from gigala.topology.topology_optimiz.gen_rl.cli import main as cli_main
+from gigala.topology.topology_optimiz.gen_rl.cli import _save_outputs, main as cli_main
 from gigala.topology.topology_optimiz.gen_rl.direct_search import _init_worker, build_mutation_coverage, evaluate_exact_batch
 from gigala.topology.topology_optimiz.gen_rl.fem import ElementFieldDiagnostics, EvalResult, Evaluator
 from gigala.topology.topology_optimiz.gen_rl.pipeline import DirectRLDegeneracyMonitor, _resolve_rl_device
@@ -683,6 +684,46 @@ class PipelineTests(unittest.TestCase):
             self.assertTrue(best_path.exists())
             self.assertTrue(archive_path.exists())
             self.assertTrue(best_png_path.exists())
+
+    def test_save_outputs_serializes_eval_results_inside_direct_diagnostics(self) -> None:
+        with TemporaryDirectory() as tmp_dir:
+            config = ProblemConfig(
+                resolution=64,
+                pipeline_mode="direct64_exact",
+                enable_rl=True,
+                max_full_evals=12,
+                max_rl_full_evals=4,
+            )
+            evaluation = EvalResult(
+                fidelity="full64",
+                resolution=64,
+                compliance=26.33,
+                score=26.33,
+                volume_fraction=0.57,
+                smoothness=1000,
+                islands=1,
+                fea_performed=True,
+                cache_hit=False,
+                passed_filters=True,
+            )
+            mask = self.make_mask(64)
+            artifacts = SimpleNamespace(
+                initial_population=[mask.copy()],
+                archive_best=[mask.copy()],
+                best64=mask.copy(),
+                search_trace=[{"event": "rl_refinement_trial", "diagnostics": {"last_info": {"evaluation": evaluation}}}],
+                metrics={"rl_trials": [{"diagnostics": {"last_info": {"evaluation": evaluation}}}]},
+                warnings=[],
+                runtime=1.0,
+                fea_counts={"proxy16": 0.0, "proxy32": 0.0, "full64": 1.0, "cache_hits": 0.0, "cache_size": 1.0},
+            )
+
+            saved = _save_outputs(Path(tmp_dir), artifacts, config)
+            summary_text = Path(saved["summary"]).read_text()
+            archive_text = Path(saved["archive"]).read_text()
+
+            self.assertIn('"score": 26.33', summary_text)
+            self.assertIn('"score": 26.33', archive_text)
 
 
 if __name__ == "__main__":
