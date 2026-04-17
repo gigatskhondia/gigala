@@ -9,7 +9,7 @@ from typing import Any, Callable
 import numpy as np
 
 from .coarse_search import SearchCandidate, boundary_local_search, run_coarse_search
-from .direct_search import DirectSearchArtifacts, generate_initial_population, run_direct_search_core
+from .direct_search import DirectSearchArtifacts, run_direct_search_core
 from .fem import EvalResult, Evaluator, ProblemConfig, evaluation_snapshot
 from .representation import infer_stage_resolutions, upsample_binary_mask
 
@@ -195,6 +195,7 @@ def _maybe_run_rl(
     config: ProblemConfig,
     evaluator: Evaluator,
     warnings: list[str],
+    seed_evaluation: EvalResult | None = None,
     progress: ProgressFn | None = None,
 ) -> np.ndarray:
     if not config.enable_rl:
@@ -224,6 +225,8 @@ def _maybe_run_rl(
     env = make_refine_env(seed_mask, config, evaluator=evaluator)
     monitored = Monitor(env)
     base_env = monitored.unwrapped
+    if seed_evaluation is not None and hasattr(base_env, "register_seed_evaluation"):
+        base_env.register_seed_evaluation(seed_evaluation)
     model = MaskablePPO(
         "CnnPolicy",
         monitored,
@@ -243,9 +246,21 @@ def _maybe_run_rl(
         action, _ = model.predict(observation, action_masks=action_masks, deterministic=True)
         observation, _reward, terminated, truncated, _info = monitored.step(action)
         done = bool(terminated or truncated)
+    rollout_mask = base_env.render()
+    rollout_eval = evaluator.evaluate(rollout_mask, "full64")
+    selected_mask = rollout_mask.copy()
+    selected_source = "deterministic_rollout"
+    if hasattr(base_env, "best_result"):
+        best_mask, best_eval = base_env.best_result()
+        if best_eval is not None and _is_better_result(best_eval, rollout_eval):
+            selected_mask = best_mask
+            selected_source = "training_best"
     if progress:
-        progress(f"RL inference rollout completed; full64_evals={int(evaluator.fea_counts['full64'])}")
-    return base_env.render()
+        progress(
+            f"RL inference rollout completed; full64_evals={int(evaluator.fea_counts['full64'])}, "
+            f"selected_source={selected_source}"
+        )
+    return selected_mask
 
 
 def _maybe_run_direct_rl(
@@ -440,7 +455,7 @@ def run_multistage_search(config: ProblemConfig, *, progress: ProgressFn | None 
                 f"stage {config.resolution} seed completed: best_score={stage64_seed_eval.score:.4f}, "
                 f"full64_evals={int(evaluator.fea_counts['full64'])}"
             )
-        rl_candidate = _maybe_run_rl(stage64_seed, config, evaluator, warnings, progress=progress)
+        rl_candidate = _maybe_run_rl(stage64_seed, config, evaluator, warnings, seed_evaluation=stage64_seed_eval, progress=progress)
         rl_candidate_eval = evaluator.evaluate(rl_candidate, "full64")
         refined64, refined64_eval, selection = _select_monotonic_refinement(
             stage64_seed,
@@ -641,16 +656,16 @@ def run_rl_only_exact_search(config: ProblemConfig, *, progress: ProgressFn | No
     start = time.time()
     evaluator = Evaluator(rl_only_config)
     warnings: list[str] = []
-    rng = np.random.default_rng(rl_only_config.random_seed)
-    seed_config = dataclasses.replace(rl_only_config, direct_population=1)
-    seed_mask = generate_initial_population(seed_config, evaluator, rng)[0]
+    seed_mask = np.ones((rl_only_config.resolution, rl_only_config.resolution), dtype=np.uint8)
     seed_eval = evaluator.evaluate(seed_mask, "full64")
     search_trace: list[dict[str, Any]] = [
         {
             "event": "rl_only_seed",
+            "seed_type": "full_solid",
             "score": float(seed_eval.score),
             "volume": float(seed_eval.volume_fraction),
             "passed_filters": bool(seed_eval.passed_filters),
+            "invalid_reason": seed_eval.invalid_reason,
         }
     ]
     if progress:
@@ -660,12 +675,19 @@ def run_rl_only_exact_search(config: ProblemConfig, *, progress: ProgressFn | No
         )
 
     if rl_only_config.enable_rl:
-        rl_candidate = _maybe_run_rl(seed_mask, rl_only_config, evaluator, warnings, progress=progress)
+        rl_candidate = _maybe_run_rl(
+            seed_mask,
+            rl_only_config,
+            evaluator,
+            warnings,
+            seed_evaluation=seed_eval,
+            progress=progress,
+        )
         rl_candidate_eval = evaluator.evaluate(rl_candidate, "full64")
     else:
-        warnings.append("RL-only pipeline launched with RL disabled; returning heuristic seed.")
+        warnings.append("RL-only pipeline launched with RL disabled; returning full-solid seed.")
         if progress:
-            progress("RL-only pipeline launched with RL disabled; returning heuristic seed.")
+            progress("RL-only pipeline launched with RL disabled; returning full-solid seed.")
         rl_candidate = seed_mask.copy()
         rl_candidate_eval = seed_eval
 

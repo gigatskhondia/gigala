@@ -287,6 +287,8 @@ if gym is not None:  # pragma: no cover - optional dependency
             self.stage_full_eval_calls = 0
             self.step_count = 0
             self.last_full_score = np.inf
+            self.best_mask = self.seed_mask.copy()
+            self.best_evaluation = None
             self.action_space = spaces.Discrete(len(self.catalog))
             self.observation_space = spaces.Box(
                 low=0.0,
@@ -308,6 +310,24 @@ if gym is not None:  # pragma: no cover - optional dependency
             self.full_eval_calls = 0
             self.last_full_score = np.inf
             return self._observation(), {}
+
+        def register_seed_evaluation(self, evaluation: Any) -> None:
+            self.best_mask = self.seed_mask.copy()
+            self.best_evaluation = evaluation
+
+        def _is_better_evaluation(self, evaluation: Any, incumbent: Any | None) -> bool:
+            if incumbent is None:
+                return True
+            incumbent_feasible = bool(getattr(incumbent, "passed_filters", False))
+            candidate_feasible = bool(getattr(evaluation, "passed_filters", False))
+            if candidate_feasible != incumbent_feasible:
+                return candidate_feasible
+            return float(getattr(evaluation, "score", np.inf)) < float(getattr(incumbent, "score", np.inf))
+
+        def _update_best(self, evaluation: Any) -> None:
+            if self._is_better_evaluation(evaluation, self.best_evaluation):
+                self.best_mask = self.mask.copy()
+                self.best_evaluation = evaluation
 
         def step(self, action: int):
             masks = self.action_masks()
@@ -331,6 +351,7 @@ if gym is not None:  # pragma: no cover - optional dependency
                 self.full_eval_calls += 1
                 self.stage_full_eval_calls += 1
                 self.last_full_score = evaluation.score
+                self._update_best(evaluation)
                 reward = self._terminal_reward(evaluation)
                 info["evaluation"] = evaluation
             return self._observation(), float(reward), terminated, False, info
@@ -348,6 +369,9 @@ if gym is not None:  # pragma: no cover - optional dependency
 
         def render(self):
             return self.mask.copy()
+
+        def best_result(self) -> tuple[np.ndarray, Any | None]:
+            return self.best_mask.copy(), self.best_evaluation
 
 
     class DirectBinaryTopologyRefineEnv(gym.Env):

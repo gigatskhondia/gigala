@@ -229,7 +229,9 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("final", artifacts.metrics)
         self.assertEqual(artifacts.fea_counts["proxy16"], 0.0)
         self.assertEqual(artifacts.fea_counts["proxy32"], 0.0)
-        self.assertGreater(artifacts.fea_counts["full64"], 0.0)
+        self.assertEqual(artifacts.fea_counts["full64"], 0.0)
+        self.assertEqual(artifacts.metrics["seed"]["invalid_reason"], "volume_out_of_range")
+        self.assertIn("full-solid seed", artifacts.warnings[0])
 
     def test_runtime_budget_zero_uses_full_eval_budget_as_stop_factor(self) -> None:
         config = ProblemConfig(
