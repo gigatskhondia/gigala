@@ -72,6 +72,9 @@ class ProblemConfig:
     rl_skip_warmup_fraction: float = 0.3
     rl_harmonic_clamp: float = 10.0
     rl_infeasible_terminal_reward: float = -1.0
+    rl_ent_coef: float = 0.03
+    rl_target_kl: float = 0.03
+    rl_best_harvest_topk: int = 4
     max_full_evals: int = 20_000
     max_rl_full_evals: int = 5_000
     density_floor: float = 1e-4
@@ -121,6 +124,12 @@ class ProblemConfig:
             raise ValueError("rl_skip_warmup_fraction must be in [0, 1].")
         if self.rl_harmonic_clamp <= 0.0:
             raise ValueError("rl_harmonic_clamp must be > 0.")
+        if self.rl_ent_coef < 0.0:
+            raise ValueError("rl_ent_coef must be >= 0.")
+        if self.rl_target_kl < 0.0:
+            raise ValueError("rl_target_kl must be >= 0.")
+        if self.rl_best_harvest_topk < 0:
+            raise ValueError("rl_best_harvest_topk must be >= 0.")
 
     @property
     def stage_resolutions(self) -> tuple[int, ...]:

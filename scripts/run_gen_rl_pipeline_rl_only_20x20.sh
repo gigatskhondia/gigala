@@ -23,6 +23,9 @@ RL_SKIP_THRESHOLD=${GEN_RL_RL_SKIP_THRESHOLD:-0.95}
 RL_SKIP_WARMUP_FRACTION=${GEN_RL_RL_SKIP_WARMUP_FRACTION:-0.3}
 RL_HARMONIC_CLAMP=${GEN_RL_RL_HARMONIC_CLAMP:-10.0}
 RL_INFEASIBLE_TERMINAL_REWARD=${GEN_RL_RL_INFEASIBLE_TERMINAL_REWARD:--1.0}
+RL_ENT_COEF=${GEN_RL_RL_ENT_COEF:-0.03}
+RL_TARGET_KL=${GEN_RL_RL_TARGET_KL:-0.03}
+RL_BEST_HARVEST_TOPK=${GEN_RL_RL_BEST_HARVEST_TOPK:-4}
 MAX_EPISODE_STEPS=${GEN_RL_MAX_EPISODE_STEPS:-800}
 RANDOM_SEED=${GEN_RL_RANDOM_SEED:-42}
 # Small policy/network on 20x20 is fastest on CPU across Apple Silicon (M1..M4)
@@ -47,7 +50,7 @@ cd "$REPO_ROOT"
 
 echo "Running RL-only 20x20 gen_rl pipeline from ${REPO_ROOT}"
 echo "Default output directory: ${OUTPUT_DIR}"
-echo "Defaults: RL enabled, rl_device=${RL_DEVICE}, rl_total_timesteps=${RL_TOTAL_TIMESTEPS}, rl_n_envs=${RL_N_ENVS}, policy_size=${RL_POLICY_SIZE}, sparse_reward=${SPARSE_FLAG}, max_episode_steps=${MAX_EPISODE_STEPS}"
+echo "Defaults: RL enabled, rl_device=${RL_DEVICE}, rl_total_timesteps=${RL_TOTAL_TIMESTEPS}, rl_n_envs=${RL_N_ENVS}, policy_size=${RL_POLICY_SIZE}, sparse_reward=${SPARSE_FLAG}, max_episode_steps=${MAX_EPISODE_STEPS}, ent_coef=${RL_ENT_COEF}, target_kl=${RL_TARGET_KL}, best_harvest_topk=${RL_BEST_HARVEST_TOPK}"
 
 exec "${PYTHON_BIN}" -m gigala.topology.topology_optimiz.gen_rl \
   ${RL_FLAG:+$RL_FLAG} \
@@ -68,6 +71,9 @@ exec "${PYTHON_BIN}" -m gigala.topology.topology_optimiz.gen_rl \
   --rl-skip-warmup-fraction "${RL_SKIP_WARMUP_FRACTION}" \
   --rl-harmonic-clamp "${RL_HARMONIC_CLAMP}" \
   --rl-infeasible-terminal-reward "${RL_INFEASIBLE_TERMINAL_REWARD}" \
+  --rl-ent-coef "${RL_ENT_COEF}" \
+  --rl-target-kl "${RL_TARGET_KL}" \
+  --rl-best-harvest-topk "${RL_BEST_HARVEST_TOPK}" \
   --max-episode-steps "${MAX_EPISODE_STEPS}" \
   ${SPARSE_REWARD_FLAG} \
   --max-full-evals "${MAX_FULL_EVALS}" \

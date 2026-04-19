@@ -197,12 +197,17 @@ def _maybe_run_rl(
     warnings: list[str],
     seed_evaluation: EvalResult | None = None,
     progress: ProgressFn | None = None,
-) -> np.ndarray:
+) -> tuple[np.ndarray, dict[str, Any]]:
+    diagnostics: dict[str, Any] = {
+        "terminal_reason_counts": {},
+        "training_best": None,
+        "training_best_source": None,
+    }
     if not config.enable_rl:
         warnings.append("RL refinement disabled by config; returning boundary-refined seed.")
         if progress:
             progress("RL refinement disabled by config; returning boundary-refined seed.")
-        return seed_mask
+        return seed_mask, diagnostics
     try:  # pragma: no cover - optional dependency
         os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
         import torch
@@ -214,7 +219,7 @@ def _maybe_run_rl(
         warnings.append("MaskablePPO dependencies are unavailable; returning boundary-refined seed.")
         if progress:
             progress("MaskablePPO dependencies are unavailable; returning boundary-refined seed.")
-        return seed_mask
+        return seed_mask, diagnostics
 
     from .refine_env import default_policy_kwargs, make_refine_env
 
@@ -270,9 +275,17 @@ def _maybe_run_rl(
     else:
         training_env = single_monitor
 
-    class _GlobalStepSyncCallback(BaseCallback):
+    harvest_topk = max(0, int(config.rl_best_harvest_topk))
+
+    class _RLTrainingCallback(BaseCallback):
         def __init__(self) -> None:
             super().__init__()
+            self.best_global_mask: np.ndarray | None = None
+            self.best_global_eval: EvalResult | None = None
+            self.seen_digests: set[bytes] = set()
+            self.terminal_reason_totals: dict[str, int] = {}
+            self.harvested_candidates = 0
+            self.harvested_feasible = 0
 
         def _on_step(self) -> bool:
             current = int(self.num_timesteps)
@@ -286,6 +299,85 @@ def _maybe_run_rl(
                 pass
             return True
 
+        def _harvest_reason_counts(self) -> None:
+            try:
+                if use_vec:
+                    drained = self.training_env.env_method("drain_terminal_reason_counts")
+                else:
+                    if hasattr(single_base, "drain_terminal_reason_counts"):
+                        drained = [single_base.drain_terminal_reason_counts()]
+                    else:
+                        drained = []
+            except Exception:
+                drained = []
+            for snapshot in drained:
+                if not isinstance(snapshot, dict):
+                    continue
+                for key, value in snapshot.items():
+                    self.terminal_reason_totals[key] = (
+                        self.terminal_reason_totals.get(key, 0) + int(value)
+                    )
+
+        def _harvest_best_candidates(self) -> None:
+            if harvest_topk <= 0:
+                return
+            try:
+                if use_vec:
+                    results = self.training_env.env_method("best_result")
+                else:
+                    if hasattr(single_base, "best_result"):
+                        results = [single_base.best_result()]
+                    else:
+                        results = []
+            except Exception:
+                results = []
+            candidates: list[tuple[np.ndarray, float]] = []
+            for mask, worker_eval in results:
+                if worker_eval is None:
+                    continue
+                if not bool(getattr(worker_eval, "passed_filters", False)):
+                    continue
+                digest = np.ascontiguousarray(mask, dtype=np.uint8).tobytes()
+                if digest in self.seen_digests:
+                    continue
+                self.seen_digests.add(digest)
+                candidates.append(
+                    (np.ascontiguousarray(mask, dtype=np.uint8).copy(), float(getattr(worker_eval, "score", np.inf)))
+                )
+            candidates.sort(key=lambda item: item[1])
+            for mask, _score in candidates[:harvest_topk]:
+                self.harvested_candidates += 1
+                try:
+                    evaluation = evaluator.evaluate(mask, "full64")
+                except Exception:
+                    continue
+                if bool(getattr(evaluation, "passed_filters", False)):
+                    self.harvested_feasible += 1
+                if self.best_global_eval is None or _is_better_result(evaluation, self.best_global_eval):
+                    self.best_global_mask = mask.copy()
+                    self.best_global_eval = evaluation
+
+        def _on_rollout_end(self) -> None:
+            self._harvest_reason_counts()
+            self._harvest_best_candidates()
+            if progress and (self.best_global_eval is not None or self.terminal_reason_totals):
+                reason_preview = ", ".join(
+                    f"{k}={v}"
+                    for k, v in sorted(self.terminal_reason_totals.items(), key=lambda kv: -kv[1])[:3]
+                )
+                best_score = (
+                    f"{self.best_global_eval.score:.4f}"
+                    if self.best_global_eval is not None
+                    else "n/a"
+                )
+                progress(
+                    f"training harvest@{int(self.num_timesteps)}: "
+                    f"best_training_score={best_score}, "
+                    f"harvested_feasible={self.harvested_feasible}/{self.harvested_candidates}, "
+                    f"reasons_top3=[{reason_preview}]"
+                )
+
+    callback = _RLTrainingCallback()
     model = MaskablePPO(
         "CnnPolicy",
         training_env,
@@ -293,15 +385,28 @@ def _maybe_run_rl(
         verbose=1 if progress else 0,
         seed=config.random_seed,
         device=device,
+        ent_coef=float(config.rl_ent_coef),
+        target_kl=float(config.rl_target_kl) if config.rl_target_kl > 0.0 else None,
     )
     try:
-        model.learn(total_timesteps=config.rl_total_timesteps, callback=_GlobalStepSyncCallback())
+        model.learn(total_timesteps=config.rl_total_timesteps, callback=callback)
     finally:
         if use_vec:
             try:
                 training_env.close()
             except Exception:
                 pass
+
+    # Final harvest in case learn() exited before _on_rollout_end.
+    callback._harvest_reason_counts()
+    callback._harvest_best_candidates()
+
+    diagnostics["terminal_reason_counts"] = dict(callback.terminal_reason_totals)
+    diagnostics["harvested_candidates"] = int(callback.harvested_candidates)
+    diagnostics["harvested_feasible"] = int(callback.harvested_feasible)
+    if callback.best_global_eval is not None:
+        diagnostics["training_best"] = _result_to_dict(callback.best_global_eval)
+
     if progress:
         progress(
             "RL training completed; running multi-rollout inference "
@@ -315,19 +420,27 @@ def _maybe_run_rl(
         config,
         progress=progress,
     )
+    selected_eval = evaluator.evaluate(selected_mask, "full64")
+    if callback.best_global_mask is not None and callback.best_global_eval is not None:
+        if _is_better_result(callback.best_global_eval, selected_eval):
+            selected_mask = callback.best_global_mask
+            selected_eval = callback.best_global_eval
+            selected_source = "training_best_harvested"
+            diagnostics["training_best_source"] = "harvested"
     if hasattr(single_base, "best_result"):
         best_mask, best_eval = single_base.best_result()
-        if best_eval is not None:
-            candidate_eval = evaluator.evaluate(selected_mask, "full64")
-            if _is_better_result(best_eval, candidate_eval):
-                selected_mask = best_mask
-                selected_source = "training_best"
+        if best_eval is not None and _is_better_result(best_eval, selected_eval):
+            selected_mask = best_mask
+            selected_eval = best_eval
+            selected_source = "training_best_rollout_env"
+            diagnostics["training_best_source"] = "rollout_env"
+    diagnostics["selected_source"] = selected_source
     if progress:
         progress(
             f"RL inference complete; full64_evals={int(evaluator.fea_counts['full64'])}, "
             f"selected_source={selected_source}"
         )
-    return selected_mask
+    return selected_mask, diagnostics
 
 
 def _rollout_inference(
@@ -565,7 +678,14 @@ def run_multistage_search(config: ProblemConfig, *, progress: ProgressFn | None 
                 f"stage {config.resolution} seed completed: best_score={stage64_seed_eval.score:.4f}, "
                 f"full64_evals={int(evaluator.fea_counts['full64'])}"
             )
-        rl_candidate = _maybe_run_rl(stage64_seed, config, evaluator, warnings, seed_evaluation=stage64_seed_eval, progress=progress)
+        rl_candidate, rl_diagnostics = _maybe_run_rl(
+            stage64_seed,
+            config,
+            evaluator,
+            warnings,
+            seed_evaluation=stage64_seed_eval,
+            progress=progress,
+        )
         rl_candidate_eval = evaluator.evaluate(rl_candidate, "full64")
         refined64, refined64_eval, selection = _select_monotonic_refinement(
             stage64_seed,
@@ -577,6 +697,8 @@ def run_multistage_search(config: ProblemConfig, *, progress: ProgressFn | None 
         metrics["refined64_rl_candidate"] = _result_to_dict(rl_candidate_eval)
         metrics["refined64_selection"] = selection
         metrics["refined64"] = _result_to_dict(refined64_eval)
+        if rl_diagnostics:
+            metrics["rl_training"] = rl_diagnostics
         if progress:
             progress(
                 f"final refined64 evaluated: score={metrics['refined64']['score']:.4f}, "
@@ -784,8 +906,9 @@ def run_rl_only_exact_search(config: ProblemConfig, *, progress: ProgressFn | No
             f"enable_rl={rl_only_config.enable_rl}, seed_score={seed_eval.score:.4f}"
         )
 
+    rl_diagnostics: dict[str, Any] = {}
     if rl_only_config.enable_rl:
-        rl_candidate = _maybe_run_rl(
+        rl_candidate, rl_diagnostics = _maybe_run_rl(
             seed_mask,
             rl_only_config,
             evaluator,
@@ -823,6 +946,8 @@ def run_rl_only_exact_search(config: ProblemConfig, *, progress: ProgressFn | No
         "rl_selection": selection,
         "final": _result_to_dict(final_eval),
     }
+    if rl_diagnostics:
+        metrics["rl_training"] = rl_diagnostics
     if progress:
         progress(
             f"rl-only exact search finished: runtime_sec={runtime:.2f}, "

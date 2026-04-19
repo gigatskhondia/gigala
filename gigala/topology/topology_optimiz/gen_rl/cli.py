@@ -161,7 +161,32 @@ def build_parser() -> argparse.ArgumentParser:
         "--rl-infeasible-terminal-reward",
         type=float,
         default=-1.0,
-        help="Reward for terminal episodes whose final mask fails feasibility filters.",
+        help=(
+            "Maximum negative reward when terminal mask fails feasibility filters. "
+            "The actual reward is scaled by a soft gap derived from volume, islands, "
+            "and support/load contact."
+        ),
+    )
+    parser.add_argument(
+        "--rl-ent-coef",
+        type=float,
+        default=0.03,
+        help="Entropy bonus coefficient passed to MaskablePPO. Prevents entropy collapse on sparse rewards.",
+    )
+    parser.add_argument(
+        "--rl-target-kl",
+        type=float,
+        default=0.03,
+        help="Target KL divergence threshold for MaskablePPO. Set to 0 to disable.",
+    )
+    parser.add_argument(
+        "--rl-best-harvest-topk",
+        type=int,
+        default=4,
+        help=(
+            "Top-K feasible candidates per rollout to re-evaluate in the main evaluator "
+            "during training. Set to 0 to disable training-best harvesting."
+        ),
     )
     parser.add_argument(
         "--max-episode-steps",
@@ -288,6 +313,9 @@ def _summary_payload(config: ProblemConfig, artifacts: Any) -> dict[str, Any]:
             "rl_skip_warmup_fraction": config.rl_skip_warmup_fraction,
             "rl_harmonic_clamp": config.rl_harmonic_clamp,
             "rl_infeasible_terminal_reward": config.rl_infeasible_terminal_reward,
+            "rl_ent_coef": config.rl_ent_coef,
+            "rl_target_kl": config.rl_target_kl,
+            "rl_best_harvest_topk": config.rl_best_harvest_topk,
             "max_episode_steps": config.max_episode_steps,
             "coarse_population": config.coarse_population,
             "coarse_generations": config.coarse_generations,
@@ -442,6 +470,9 @@ def main(argv: list[str] | None = None) -> int:
         rl_skip_warmup_fraction=args.rl_skip_warmup_fraction,
         rl_harmonic_clamp=args.rl_harmonic_clamp,
         rl_infeasible_terminal_reward=args.rl_infeasible_terminal_reward,
+        rl_ent_coef=args.rl_ent_coef,
+        rl_target_kl=args.rl_target_kl,
+        rl_best_harvest_topk=args.rl_best_harvest_topk,
         max_episode_steps=args.max_episode_steps,
         coarse_population=args.coarse_population,
         coarse_generations=args.coarse_generations,

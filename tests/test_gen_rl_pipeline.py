@@ -6,6 +6,7 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 import numpy as np
@@ -971,6 +972,177 @@ class PipelineTests(unittest.TestCase):
         self.assertFalse(terminated)
         self.assertEqual(reward, 0.0)
         self.assertNotIn("evaluation", info)
+
+    def test_terminal_cleanup_removes_disconnected_cells(self) -> None:
+        if gym is None:
+            self.skipTest("gymnasium is unavailable")
+        from scipy import ndimage as _ndi
+
+        config = ProblemConfig(
+            resolution=8,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            max_full_evals=32,
+            max_rl_full_evals=32,
+            max_episode_steps=16,
+            rl_sparse_reward=True,
+            volume_target=0.5,
+            volume_tolerance=0.5,
+            rl_skip_threshold=0.0,
+        )
+        seed = np.ones((8, 8), dtype=np.uint8)
+        env = make_refine_env(seed, config)
+        env.reset()
+
+        injected = np.zeros_like(env.mask)
+        injected[env.support_load_mask > 0] = 1
+        dilated = _ndi.binary_dilation(
+            env.support_load_mask > 0,
+            structure=np.ones((3, 3), dtype=bool),
+            iterations=1,
+        )
+        isolated_cells = np.argwhere(~dilated)
+        self.assertGreater(len(isolated_cells), 0)
+        row, col = int(isolated_cells[0][0]), int(isolated_cells[0][1])
+        injected[row, col] = 1
+        env.mask = injected.copy()
+
+        feasible_eval = EvalResult(
+            fidelity="full64",
+            resolution=8,
+            compliance=10.0,
+            score=10.0,
+            volume_fraction=float(injected.sum()) / injected.size,
+            smoothness=0,
+            islands=1,
+            fea_performed=True,
+            cache_hit=False,
+            passed_filters=True,
+        )
+        info: dict[str, Any] = {}
+        with patch.object(env.evaluator, "evaluate", return_value=feasible_eval):
+            env._finalize_sparse_reward(info, stopped=True)
+
+        self.assertTrue(info.get("cleanup_applied", False))
+        self.assertEqual(int(env.mask[row, col]), 0)
+
+    def test_soft_infeasible_reward_scales_monotonically_with_gap(self) -> None:
+        if gym is None:
+            self.skipTest("gymnasium is unavailable")
+        config = ProblemConfig(
+            resolution=8,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            max_full_evals=32,
+            max_rl_full_evals=32,
+            max_episode_steps=8,
+            rl_sparse_reward=True,
+            volume_target=0.5,
+            volume_tolerance=0.1,
+            rl_infeasible_terminal_reward=-0.8,
+        )
+        seed = np.ones((8, 8), dtype=np.uint8)
+        env = make_refine_env(seed, config)
+        env.reset()
+        near_eval = EvalResult(
+            fidelity="full64",
+            resolution=8,
+            compliance=1e12,
+            score=1e12,
+            volume_fraction=0.615,
+            smoothness=0,
+            islands=1,
+            fea_performed=False,
+            cache_hit=False,
+            passed_filters=False,
+            invalid_reason="volume_out_of_range",
+        )
+        far_eval = EvalResult(
+            fidelity="full64",
+            resolution=8,
+            compliance=1e12,
+            score=1e12,
+            volume_fraction=1.0,
+            smoothness=0,
+            islands=1,
+            fea_performed=False,
+            cache_hit=False,
+            passed_filters=False,
+            invalid_reason="volume_out_of_range",
+        )
+        near_reward = env._soft_infeasible_reward(near_eval)
+        far_reward = env._soft_infeasible_reward(far_eval)
+        self.assertLessEqual(near_reward, 0.0)
+        self.assertLessEqual(far_reward, 0.0)
+        self.assertLess(far_reward, near_reward)
+        self.assertGreaterEqual(near_reward, config.rl_infeasible_terminal_reward)
+        self.assertAlmostEqual(far_reward, config.rl_infeasible_terminal_reward, places=6)
+
+    def test_terminal_reason_counts_accumulate_and_drain(self) -> None:
+        if gym is None:
+            self.skipTest("gymnasium is unavailable")
+        config = ProblemConfig(
+            resolution=8,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            max_full_evals=32,
+            max_rl_full_evals=32,
+            max_episode_steps=16,
+            rl_sparse_reward=True,
+            volume_target=0.5,
+            volume_tolerance=0.20,
+            rl_volume_slack_lower=0.1,
+            rl_volume_slack_upper=0.1,
+            rl_skip_threshold=0.0,
+        )
+        seed = np.zeros((8, 8), dtype=np.uint8)
+        seed.flat[: 8 * 8 // 2] = 1
+        env = make_refine_env(seed, config)
+        stop_idx = env.stop_action_index
+        self.assertIsNotNone(stop_idx)
+
+        self.assertEqual(env.drain_terminal_reason_counts(), {})
+
+        feasible_eval = EvalResult(
+            fidelity="full64",
+            resolution=8,
+            compliance=10.0,
+            score=10.0,
+            volume_fraction=0.5,
+            smoothness=4,
+            islands=1,
+            fea_performed=True,
+            cache_hit=False,
+            passed_filters=True,
+        )
+        infeasible_eval = EvalResult(
+            fidelity="full64",
+            resolution=8,
+            compliance=1e12,
+            score=1e12,
+            volume_fraction=0.5,
+            smoothness=0,
+            islands=1,
+            fea_performed=False,
+            cache_hit=False,
+            passed_filters=False,
+            invalid_reason="too_many_islands",
+        )
+
+        env.reset()
+        with patch.object(env.evaluator, "evaluate", return_value=feasible_eval):
+            env.step(stop_idx)
+        env.reset()
+        with patch.object(env.evaluator, "evaluate", return_value=infeasible_eval):
+            env.step(stop_idx)
+        env.reset()
+        with patch.object(env.evaluator, "evaluate", return_value=infeasible_eval):
+            env.step(stop_idx)
+
+        drained = env.drain_terminal_reason_counts()
+        self.assertEqual(drained.get("passed", 0), 1)
+        self.assertEqual(drained.get("too_many_islands", 0), 2)
+        self.assertEqual(env.drain_terminal_reason_counts(), {})
 
     def test_summary_payload_includes_git_version_info(self) -> None:
         fake_git = {

@@ -12,6 +12,8 @@ from .metrics import (
     count_islands,
     ensure_binary,
     prune_isolated_cells,
+    retain_components_touching_region,
+    touches_region,
     volume_fraction,
 )
 from .representation import frontier_band, stack_observation
@@ -333,8 +335,10 @@ if gym is not None:  # pragma: no cover - optional dependency
             self.sparse_reward = bool(config.rl_sparse_reward)
             self.catalog = build_action_catalog(self.mask.shape[0], include_stop=self.sparse_reward)
             self.stop_action_index = len(self.catalog) - 1 if self.sparse_reward else None
-            support_load = evaluator.setups[self.mask.shape[0]].support_mask + evaluator.setups[self.mask.shape[0]].load_mask
-            self.support_load_mask = np.clip(support_load, 0, 1).astype(np.float32)
+            setup = evaluator.setups[self.mask.shape[0]]
+            self.support_mask = np.asarray(setup.support_mask, dtype=np.uint8)
+            self.load_mask = np.asarray(setup.load_mask, dtype=np.uint8)
+            self.support_load_mask = np.clip(self.support_mask + self.load_mask, 0, 1).astype(np.float32)
             self.immutable_mask = self.support_load_mask.astype(np.uint8)
             self.full_eval_calls = 0
             self.stage_full_eval_calls = 0
@@ -343,6 +347,7 @@ if gym is not None:  # pragma: no cover - optional dependency
             self.best_mask = self.seed_mask.copy()
             self.best_evaluation = None
             self.global_step = 0
+            self.terminal_reason_counts: dict[str, int] = {}
             self.action_space = spaces.Discrete(len(self.catalog))
             self.observation_space = spaces.Box(
                 low=0.0,
@@ -489,21 +494,48 @@ if gym is not None:  # pragma: no cover - optional dependency
             info["stopped_by_agent"] = bool(stopped)
             if skipped:
                 info["evaluation"] = self.best_evaluation
+                self._record_terminal_reason("fea_skipped")
                 return 0.0
             can_eval = self.stage_full_eval_calls < self.config.max_rl_full_evals
             if not can_eval:
                 info["fea_budget_exhausted"] = True
                 info["evaluation"] = self.best_evaluation
+                self._record_terminal_reason("fea_budget_exhausted")
                 return 0.0
+            cleaned = retain_components_touching_region(self.mask, self.support_load_mask)
+            info["cleanup_applied"] = not np.array_equal(cleaned, self.mask)
+            self.mask = cleaned
             evaluation = self.evaluator.evaluate(self.mask, "full64")
             self.full_eval_calls += 1
             self.stage_full_eval_calls += 1
             self.last_full_score = evaluation.score
             self._update_best(evaluation)
             info["evaluation"] = evaluation
+            reason = "passed" if evaluation.passed_filters else (evaluation.invalid_reason or "failed_filters")
+            info["terminal_reason"] = reason
+            self._record_terminal_reason(reason)
             if not evaluation.passed_filters:
-                return float(self.config.rl_infeasible_terminal_reward)
+                return float(self._soft_infeasible_reward(evaluation))
             return float(self._harmonic_reward(evaluation))
+
+        def _record_terminal_reason(self, reason: str) -> None:
+            self.terminal_reason_counts[reason] = self.terminal_reason_counts.get(reason, 0) + 1
+
+        def _soft_infeasible_reward(self, evaluation: Any) -> float:
+            resolution = int(self.mask.shape[0])
+            tolerance = max(float(self.config.volume_tolerance), 1e-6)
+            vol = float(evaluation.volume_fraction)
+            target = float(self.config.volume_target)
+            v_ratio = abs(vol - target) / tolerance
+            v_gap = max(v_ratio - 1.0, 0.0)
+            islands_limit = max(6, resolution // 4)
+            islands = int(evaluation.islands)
+            island_gap = max(islands - islands_limit, 0) / max(islands_limit, 1)
+            support_gap = 0.0 if touches_region(self.mask, self.support_mask) else 1.0
+            load_gap = 0.0 if touches_region(self.mask, self.load_mask) else 1.0
+            empty_gap = 1.0 if vol <= 0.0 else 0.0
+            gap = min(1.0, v_gap + 0.5 * island_gap + support_gap + load_gap + empty_gap)
+            return float(self.config.rl_infeasible_terminal_reward) * float(gap)
 
         def _harmonic_reward(self, evaluation: Any) -> float:
             compliance = max(float(evaluation.compliance), 1e-6)
@@ -535,6 +567,11 @@ if gym is not None:  # pragma: no cover - optional dependency
 
         def best_result(self) -> tuple[np.ndarray, Any | None]:
             return self.best_mask.copy(), self.best_evaluation
+
+        def drain_terminal_reason_counts(self) -> dict[str, int]:
+            snapshot = dict(self.terminal_reason_counts)
+            self.terminal_reason_counts = {}
+            return snapshot
 
 
     class DirectBinaryTopologyRefineEnv(gym.Env):
