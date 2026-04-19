@@ -207,7 +207,9 @@ def _maybe_run_rl(
         os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
         import torch
         from sb3_contrib import MaskablePPO
+        from stable_baselines3.common.callbacks import BaseCallback
         from stable_baselines3.common.monitor import Monitor
+        from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
     except Exception:
         warnings.append("MaskablePPO dependencies are unavailable; returning boundary-refined seed.")
         if progress:
@@ -216,51 +218,159 @@ def _maybe_run_rl(
 
     from .refine_env import default_policy_kwargs, make_refine_env
 
-    device = _resolve_rl_device(config, progress=progress, torch_module=torch)
+    n_envs = max(1, int(config.rl_n_envs))
+    use_vec = n_envs > 1
+    if use_vec:
+        device = "cpu"
+        if config.rl_device != "cpu" and progress:
+            progress(
+                f"vectorized envs active (n_envs={n_envs}); forcing rl_device=cpu "
+                f"(requested={config.rl_device}) for stable multiprocessing."
+            )
+    else:
+        device = _resolve_rl_device(config, progress=progress, torch_module=torch)
     if progress:
         progress(
             f"starting RL refinement: total_timesteps={config.rl_total_timesteps}, "
-            f"max_rl_full_evals={config.max_rl_full_evals}, device={device}"
+            f"max_rl_full_evals={config.max_rl_full_evals}, n_envs={n_envs}, device={device}, "
+            f"sparse_reward={config.rl_sparse_reward}, policy_size={config.rl_policy_size}"
         )
-    env = make_refine_env(seed_mask, config, evaluator=evaluator)
-    monitored = Monitor(env)
-    base_env = monitored.unwrapped
-    if seed_evaluation is not None and hasattr(base_env, "register_seed_evaluation"):
-        base_env.register_seed_evaluation(seed_evaluation)
+
+    single_env = make_refine_env(seed_mask, config, evaluator=evaluator)
+    single_monitor = Monitor(single_env)
+    single_base = single_monitor.unwrapped
+    if seed_evaluation is not None and hasattr(single_base, "register_seed_evaluation"):
+        single_base.register_seed_evaluation(seed_evaluation)
+
+    def _make_worker_env(worker_index: int):
+        def _init():
+            from .fem import Evaluator as _Evaluator  # re-import inside worker proc
+
+            worker_config = dataclasses.replace(
+                config, random_seed=config.random_seed + worker_index + 1
+            )
+            worker_evaluator = _Evaluator(worker_config)
+            env = make_refine_env(seed_mask, worker_config, evaluator=worker_evaluator)
+            if seed_evaluation is not None and hasattr(env, "register_seed_evaluation"):
+                env.register_seed_evaluation(seed_evaluation)
+            return Monitor(env)
+
+        return _init
+
+    if use_vec:
+        try:
+            training_env = SubprocVecEnv([_make_worker_env(i) for i in range(n_envs)])
+        except Exception as exc:
+            warnings.append(f"SubprocVecEnv unavailable ({exc}); falling back to DummyVecEnv.")
+            if progress:
+                progress(
+                    f"SubprocVecEnv unavailable ({exc}); falling back to DummyVecEnv with n_envs={n_envs}."
+                )
+            training_env = DummyVecEnv([_make_worker_env(i) for i in range(n_envs)])
+    else:
+        training_env = single_monitor
+
+    class _GlobalStepSyncCallback(BaseCallback):
+        def __init__(self) -> None:
+            super().__init__()
+
+        def _on_step(self) -> bool:
+            current = int(self.num_timesteps)
+            try:
+                if use_vec:
+                    self.training_env.env_method("set_global_step", current)
+                else:
+                    if hasattr(single_base, "set_global_step"):
+                        single_base.set_global_step(current)
+            except Exception:
+                pass
+            return True
+
     model = MaskablePPO(
         "CnnPolicy",
-        monitored,
-        policy_kwargs=default_policy_kwargs(),
+        training_env,
+        policy_kwargs=default_policy_kwargs(config.rl_policy_size),
         verbose=1 if progress else 0,
         seed=config.random_seed,
         device=device,
     )
-    model.learn(total_timesteps=config.rl_total_timesteps)
-    if progress:
-        progress("RL training completed; running deterministic inference rollout.")
-
-    observation, _ = monitored.reset()
-    done = False
-    while not done:
-        action_masks = base_env.action_masks()
-        action, _ = model.predict(observation, action_masks=action_masks, deterministic=True)
-        observation, _reward, terminated, truncated, _info = monitored.step(action)
-        done = bool(terminated or truncated)
-    rollout_mask = base_env.render()
-    rollout_eval = evaluator.evaluate(rollout_mask, "full64")
-    selected_mask = rollout_mask.copy()
-    selected_source = "deterministic_rollout"
-    if hasattr(base_env, "best_result"):
-        best_mask, best_eval = base_env.best_result()
-        if best_eval is not None and _is_better_result(best_eval, rollout_eval):
-            selected_mask = best_mask
-            selected_source = "training_best"
+    try:
+        model.learn(total_timesteps=config.rl_total_timesteps, callback=_GlobalStepSyncCallback())
+    finally:
+        if use_vec:
+            try:
+                training_env.close()
+            except Exception:
+                pass
     if progress:
         progress(
-            f"RL inference rollout completed; full64_evals={int(evaluator.fea_counts['full64'])}, "
+            "RL training completed; running multi-rollout inference "
+            f"(rollouts={config.rl_inference_rollouts})."
+        )
+
+    selected_mask, selected_source = _rollout_inference(
+        model,
+        single_monitor,
+        evaluator,
+        config,
+        progress=progress,
+    )
+    if hasattr(single_base, "best_result"):
+        best_mask, best_eval = single_base.best_result()
+        if best_eval is not None:
+            candidate_eval = evaluator.evaluate(selected_mask, "full64")
+            if _is_better_result(best_eval, candidate_eval):
+                selected_mask = best_mask
+                selected_source = "training_best"
+    if progress:
+        progress(
+            f"RL inference complete; full64_evals={int(evaluator.fea_counts['full64'])}, "
             f"selected_source={selected_source}"
         )
     return selected_mask
+
+
+def _rollout_inference(
+    model: Any,
+    monitor_env: Any,
+    evaluator: Evaluator,
+    config: ProblemConfig,
+    *,
+    progress: ProgressFn | None = None,
+) -> tuple[np.ndarray, str]:
+    base_env = monitor_env.unwrapped
+    total_rollouts = max(1, int(config.rl_inference_rollouts))
+    best_mask: np.ndarray | None = None
+    best_eval: EvalResult | None = None
+    best_source = "deterministic_rollout"
+    for rollout_idx in range(total_rollouts):
+        deterministic = rollout_idx == 0
+        observation, _ = monitor_env.reset()
+        done = False
+        while not done:
+            action_masks = base_env.action_masks()
+            action, _ = model.predict(
+                observation,
+                action_masks=action_masks,
+                deterministic=deterministic,
+            )
+            observation, _reward, terminated, truncated, _info = monitor_env.step(action)
+            done = bool(terminated or truncated)
+        rollout_mask = base_env.render()
+        rollout_eval = evaluator.evaluate(rollout_mask, "full64")
+        source = "deterministic_rollout" if deterministic else f"stochastic_rollout_{rollout_idx}"
+        if progress:
+            progress(
+                f"inference rollout {rollout_idx + 1}/{total_rollouts} ({source}): "
+                f"score={rollout_eval.score:.4f}, passed_filters={rollout_eval.passed_filters}, "
+                f"volume={rollout_eval.volume_fraction:.3f}"
+            )
+        if best_eval is None or _is_better_result(rollout_eval, best_eval):
+            best_mask = rollout_mask.copy()
+            best_eval = rollout_eval
+            best_source = source
+    assert best_mask is not None
+    return best_mask, best_source
 
 
 def _maybe_run_direct_rl(

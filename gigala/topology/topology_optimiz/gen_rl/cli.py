@@ -4,6 +4,7 @@ import argparse
 import dataclasses
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -96,6 +97,78 @@ def build_parser() -> argparse.ArgumentParser:
         default=32,
         help="Stop direct RL training early after this many immediate stop-only episodes. Default: 32.",
     )
+    parser.add_argument(
+        "--rl-sparse-reward",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Use sparse terminal reward (harmonic mean 2*a1*a2/(a1+a2)) with a stop action "
+            "and volume-aware action masking. Recommended for rl_only_exact."
+        ),
+    )
+    parser.add_argument(
+        "--rl-n-envs",
+        type=int,
+        default=1,
+        help="Number of parallel RL envs (SubprocVecEnv). Default: 1.",
+    )
+    parser.add_argument(
+        "--rl-inference-rollouts",
+        type=int,
+        default=1,
+        help="Rollouts at RL inference time (1 deterministic + N-1 stochastic). Default: 1.",
+    )
+    parser.add_argument(
+        "--rl-policy-size",
+        default="small",
+        choices=("small", "large"),
+        help="Policy network size. 'large' = CNN 32/64/128 + feat_dim=256 + MLP [256,256].",
+    )
+    parser.add_argument(
+        "--rl-volume-slack-lower",
+        type=float,
+        default=0.05,
+        help="Lower slack for volume-aware action masking (allowed volume >= target - slack).",
+    )
+    parser.add_argument(
+        "--rl-volume-slack-upper",
+        type=float,
+        default=0.05,
+        help="Upper slack for volume-aware action masking (allowed volume <= target + slack).",
+    )
+    parser.add_argument(
+        "--rl-skip-threshold",
+        type=float,
+        default=0.95,
+        help=(
+            "Cosine-similarity threshold for smart skipping of terminal FEA. "
+            "Set to 0 to disable smart skipping."
+        ),
+    )
+    parser.add_argument(
+        "--rl-skip-warmup-fraction",
+        type=float,
+        default=0.3,
+        help="Fraction of total timesteps before smart skipping activates.",
+    )
+    parser.add_argument(
+        "--rl-harmonic-clamp",
+        type=float,
+        default=10.0,
+        help="Clamp for 1/compliance and 1/(1+penalty) terms in the harmonic-mean reward.",
+    )
+    parser.add_argument(
+        "--rl-infeasible-terminal-reward",
+        type=float,
+        default=-1.0,
+        help="Reward for terminal episodes whose final mask fails feasibility filters.",
+    )
+    parser.add_argument(
+        "--max-episode-steps",
+        type=int,
+        default=256,
+        help="Maximum steps per RL episode. Scale with resolution for sparse reward.",
+    )
     parser.add_argument("--coarse-population", type=int, default=128, help="Population size for the 16x16 coarse stage.")
     parser.add_argument("--coarse-generations", type=int, default=250, help="Generations for the 16x16 coarse stage.")
     parser.add_argument("--coarse-elite-count", type=int, default=16, help="Elite count kept between generations.")
@@ -130,8 +203,65 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _git_version_info() -> dict[str, Any]:
+    def _run(args: list[str], cwd: Path) -> str | None:
+        try:
+            result = subprocess.run(
+                ["git", *args],
+                cwd=str(cwd),
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if result.returncode != 0:
+            return None
+        return result.stdout.strip() or None
+
+    info: dict[str, Any] = {
+        "branch": None,
+        "commit": None,
+        "commit_short": None,
+        "dirty": None,
+        "commit_subject": None,
+        "commit_time": None,
+    }
+    try:
+        override_commit = os.environ.get("GEN_RL_GIT_COMMIT")
+        override_branch = os.environ.get("GEN_RL_GIT_BRANCH")
+        start_dir = Path(__file__).resolve().parent
+        toplevel = _run(["rev-parse", "--show-toplevel"], start_dir)
+        cwd = Path(toplevel) if toplevel else start_dir
+        commit = override_commit or _run(["rev-parse", "HEAD"], cwd)
+        if commit:
+            info["commit"] = commit
+            info["commit_short"] = commit[:12]
+        branch = override_branch or _run(["rev-parse", "--abbrev-ref", "HEAD"], cwd)
+        if branch and branch != "HEAD":
+            info["branch"] = branch
+        else:
+            describe = _run(["describe", "--all", "--always", "HEAD"], cwd)
+            if describe:
+                info["branch"] = describe
+        status = _run(["status", "--porcelain"], cwd)
+        if status is not None:
+            info["dirty"] = bool(status.strip())
+        subject = _run(["log", "-1", "--pretty=%s"], cwd)
+        if subject:
+            info["commit_subject"] = subject
+        commit_time = _run(["log", "-1", "--pretty=%cI"], cwd)
+        if commit_time:
+            info["commit_time"] = commit_time
+    except Exception:
+        return info
+    return info
+
+
 def _summary_payload(config: ProblemConfig, artifacts: Any) -> dict[str, Any]:
     return {
+        "git": _git_version_info(),
         "config": {
             "pipeline_mode": config.pipeline_mode,
             "resolution": config.resolution,
@@ -148,6 +278,17 @@ def _summary_payload(config: ProblemConfig, artifacts: Any) -> dict[str, Any]:
             "rl_stress_hotspot_dilate": config.rl_stress_hotspot_dilate,
             "rl_stop_penalty": config.rl_stop_penalty,
             "rl_degenerate_episode_window": config.rl_degenerate_episode_window,
+            "rl_sparse_reward": config.rl_sparse_reward,
+            "rl_n_envs": config.rl_n_envs,
+            "rl_inference_rollouts": config.rl_inference_rollouts,
+            "rl_policy_size": config.rl_policy_size,
+            "rl_volume_slack_lower": config.rl_volume_slack_lower,
+            "rl_volume_slack_upper": config.rl_volume_slack_upper,
+            "rl_skip_threshold": config.rl_skip_threshold,
+            "rl_skip_warmup_fraction": config.rl_skip_warmup_fraction,
+            "rl_harmonic_clamp": config.rl_harmonic_clamp,
+            "rl_infeasible_terminal_reward": config.rl_infeasible_terminal_reward,
+            "max_episode_steps": config.max_episode_steps,
             "coarse_population": config.coarse_population,
             "coarse_generations": config.coarse_generations,
             "coarse_elite_count": config.coarse_elite_count,
@@ -291,6 +432,17 @@ def main(argv: list[str] | None = None) -> int:
         rl_stress_hotspot_dilate=args.rl_stress_hotspot_dilate,
         rl_stop_penalty=args.rl_stop_penalty,
         rl_degenerate_episode_window=args.rl_degenerate_episode_window,
+        rl_sparse_reward=args.rl_sparse_reward,
+        rl_n_envs=args.rl_n_envs,
+        rl_inference_rollouts=args.rl_inference_rollouts,
+        rl_policy_size=args.rl_policy_size,
+        rl_volume_slack_lower=args.rl_volume_slack_lower,
+        rl_volume_slack_upper=args.rl_volume_slack_upper,
+        rl_skip_threshold=args.rl_skip_threshold,
+        rl_skip_warmup_fraction=args.rl_skip_warmup_fraction,
+        rl_harmonic_clamp=args.rl_harmonic_clamp,
+        rl_infeasible_terminal_reward=args.rl_infeasible_terminal_reward,
+        max_episode_steps=args.max_episode_steps,
         coarse_population=args.coarse_population,
         coarse_generations=args.coarse_generations,
         coarse_elite_count=args.coarse_elite_count,
@@ -309,6 +461,17 @@ def main(argv: list[str] | None = None) -> int:
         random_seed=args.random_seed,
     )
 
+    git_info = _git_version_info()
+    if git_info.get("commit"):
+        _progress_logger(
+            "git version: "
+            f"branch={git_info.get('branch') or '<detached>'}, "
+            f"commit={git_info.get('commit_short')} "
+            f"(dirty={git_info.get('dirty')}) "
+            f"subject={git_info.get('commit_subject') or '-'}"
+        )
+    else:
+        _progress_logger("git version: unavailable (not a git checkout or git not on PATH)")
     _progress_logger(
         f"CLI launch: resolution={config.resolution}, volume_target={config.volume_target}, "
         f"pipeline_mode={config.pipeline_mode}, runtime_budget_hours={config.runtime_budget_hours}, "

@@ -48,7 +48,7 @@ class DirectGridAction:
     size: int
 
 
-def build_action_catalog(resolution: int) -> list[GridAction]:
+def build_action_catalog(resolution: int, *, include_stop: bool = False) -> list[GridAction]:
     actions: list[GridAction] = []
     for row in range(resolution):
         for col in range(resolution):
@@ -59,29 +59,72 @@ def build_action_catalog(resolution: int) -> list[GridAction]:
         for row in range(limit):
             for col in range(limit):
                 actions.append(GridAction(f"remove_{size}x{size}", row, col, size))
+    if include_stop:
+        actions.append(GridAction("stop", 0, 0, 0))
     return actions
 
 
-def compute_action_mask(mask: np.ndarray, catalog: list[GridAction], immutable_mask: np.ndarray, frontier_width: int) -> np.ndarray:
+def compute_action_mask(
+    mask: np.ndarray,
+    catalog: list[GridAction],
+    immutable_mask: np.ndarray,
+    frontier_width: int,
+    *,
+    volume_target: float | None = None,
+    volume_slack_lower: float = 0.0,
+    volume_slack_upper: float = 0.0,
+    volume_tolerance: float | None = None,
+) -> np.ndarray:
     binary = ensure_binary(mask)
     frontier = frontier_band(binary, width=frontier_width)
+    size = max(binary.size, 1)
+    current_volume = float(binary.sum()) / float(size)
+    lower_bound = None
+    upper_bound = None
+    if volume_target is not None:
+        lower_bound = volume_target - volume_slack_lower
+        upper_bound = volume_target + volume_slack_upper
     valid = np.zeros(len(catalog), dtype=bool)
     for idx, action in enumerate(catalog):
+        if action.kind == "stop":
+            if volume_target is None or volume_tolerance is None:
+                valid[idx] = True
+            else:
+                valid[idx] = abs(current_volume - volume_target) <= volume_tolerance
+            continue
         patch = binary[action.row : action.row + action.size, action.col : action.col + action.size]
         immutable_patch = immutable_mask[action.row : action.row + action.size, action.col : action.col + action.size]
         frontier_patch = frontier[action.row : action.row + action.size, action.col : action.col + action.size]
         if action.kind == "add_1x1":
-            valid[idx] = patch.shape == (1, 1) and patch[0, 0] == 0 and frontier_patch.any()
+            base_ok = patch.shape == (1, 1) and patch[0, 0] == 0 and frontier_patch.any()
+            if base_ok and upper_bound is not None:
+                next_volume = (current_volume * size + 1.0) / size
+                base_ok = next_volume <= upper_bound
+            valid[idx] = base_ok
         elif action.kind == "remove_1x1":
-            valid[idx] = (
+            base_ok = (
                 patch.shape == (1, 1)
                 and patch[0, 0] == 1
                 and frontier_patch.any()
                 and immutable_patch.sum() == 0
                 and _count_neighbors(binary, action.row, action.col) >= 2
             )
+            if base_ok and lower_bound is not None:
+                next_volume = (current_volume * size - 1.0) / size
+                base_ok = next_volume >= lower_bound
+            valid[idx] = base_ok
         else:
-            valid[idx] = patch.shape == (action.size, action.size) and patch.all() and frontier_patch.any() and immutable_patch.sum() == 0
+            base_ok = (
+                patch.shape == (action.size, action.size)
+                and patch.all()
+                and frontier_patch.any()
+                and immutable_patch.sum() == 0
+            )
+            if base_ok and lower_bound is not None:
+                removed = float(action.size * action.size)
+                next_volume = (current_volume * size - removed) / size
+                base_ok = next_volume >= lower_bound
+            valid[idx] = base_ok
     return valid
 
 
@@ -96,6 +139,8 @@ def _count_neighbors(mask: np.ndarray, row: int, col: int) -> int:
 
 def apply_action(mask: np.ndarray, action: GridAction) -> np.ndarray:
     binary = ensure_binary(mask).copy()
+    if action.kind == "stop":
+        return binary
     if action.kind == "add_1x1":
         binary[action.row, action.col] = 1
     else:
@@ -231,24 +276,23 @@ def stack_direct_observation(
 
 if th is not None:  # pragma: no cover - optional dependency
     class SmallBinaryMaskCNN(BaseFeaturesExtractor):
-        def __init__(self, observation_space: Any, features_dim: int = 128):
+        def __init__(
+            self,
+            observation_space: Any,
+            features_dim: int = 128,
+            channels_plan: tuple[int, int, int] = (16, 32, 64),
+        ):
             super().__init__(observation_space, features_dim)
             channels = observation_space.shape[0]
+            c1, c2, c3 = channels_plan
             self.network = th.nn.Sequential(
-                th.nn.Conv2d(channels, 16, kernel_size=3, stride=2, padding=1),
+                th.nn.Conv2d(channels, c1, kernel_size=3, stride=2, padding=1),
                 th.nn.ReLU(),
-                th.nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1),
+                th.nn.Conv2d(c1, c2, kernel_size=3, stride=2, padding=1),
                 th.nn.ReLU(),
-                th.nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+                th.nn.Conv2d(c2, c3, kernel_size=3, stride=2, padding=1),
                 th.nn.ReLU(),
                 th.nn.Flatten(),
-#                 th.nn.Conv2d(channels, 32, kernel_size=3, stride=2, padding=1),
-#                 th.nn.ReLU(),
-#                 th.nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
-#                 th.nn.ReLU(),
-#                 th.nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
-#                 th.nn.ReLU(),
-#                 th.nn.Flatten(),
             )
             with th.no_grad():
                 sample = th.as_tensor(observation_space.sample()[None]).float()
@@ -259,13 +303,20 @@ if th is not None:  # pragma: no cover - optional dependency
             return self.projection(self.network(observations.float()))
 
 
-def default_policy_kwargs() -> dict[str, Any]:
-    kwargs: dict[str, Any] = {"net_arch": [128, 128]}
-#     kwargs: dict[str, Any] = {"net_arch": [256, 256]}
+def default_policy_kwargs(policy_size: str = "small") -> dict[str, Any]:
+    if policy_size == "large":
+        kwargs: dict[str, Any] = {"net_arch": [256, 256]}
+        if th is not None:
+            kwargs["features_extractor_class"] = SmallBinaryMaskCNN
+            kwargs["features_extractor_kwargs"] = {
+                "features_dim": 256,
+                "channels_plan": (32, 64, 128),
+            }
+        return kwargs
+    kwargs = {"net_arch": [128, 128]}
     if th is not None:
         kwargs["features_extractor_class"] = SmallBinaryMaskCNN
         kwargs["features_extractor_kwargs"] = {"features_dim": 128}
-        # kwargs["features_extractor_kwargs"] = {"features_dim": 256}
     return kwargs
 
 
@@ -279,7 +330,9 @@ if gym is not None:  # pragma: no cover - optional dependency
             self.evaluator = evaluator
             self.seed_mask = ensure_binary(seed_mask)
             self.mask = self.seed_mask.copy()
-            self.catalog = build_action_catalog(self.mask.shape[0])
+            self.sparse_reward = bool(config.rl_sparse_reward)
+            self.catalog = build_action_catalog(self.mask.shape[0], include_stop=self.sparse_reward)
+            self.stop_action_index = len(self.catalog) - 1 if self.sparse_reward else None
             support_load = evaluator.setups[self.mask.shape[0]].support_mask + evaluator.setups[self.mask.shape[0]].load_mask
             self.support_load_mask = np.clip(support_load, 0, 1).astype(np.float32)
             self.immutable_mask = self.support_load_mask.astype(np.uint8)
@@ -289,6 +342,7 @@ if gym is not None:  # pragma: no cover - optional dependency
             self.last_full_score = np.inf
             self.best_mask = self.seed_mask.copy()
             self.best_evaluation = None
+            self.global_step = 0
             self.action_space = spaces.Discrete(len(self.catalog))
             self.observation_space = spaces.Box(
                 low=0.0,
@@ -301,19 +355,39 @@ if gym is not None:  # pragma: no cover - optional dependency
             return stack_observation(self.mask, self.support_load_mask, frontier_width=self.config.frontier_width).astype(np.float32)
 
         def action_masks(self) -> np.ndarray:
-            return compute_action_mask(self.mask, self.catalog, self.immutable_mask, self.config.frontier_width)
+            if self.sparse_reward:
+                return compute_action_mask(
+                    self.mask,
+                    self.catalog,
+                    self.immutable_mask,
+                    self.config.frontier_width,
+                    volume_target=self.config.volume_target,
+                    volume_slack_lower=self.config.rl_volume_slack_lower,
+                    volume_slack_upper=self.config.rl_volume_slack_upper,
+                    volume_tolerance=self.config.volume_tolerance,
+                )
+            return compute_action_mask(
+                self.mask,
+                self.catalog,
+                self.immutable_mask,
+                self.config.frontier_width,
+            )
 
         def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
             super().reset(seed=seed)
             self.mask = self.seed_mask.copy()
             self.step_count = 0
             self.full_eval_calls = 0
+            self.stage_full_eval_calls = 0
             self.last_full_score = np.inf
             return self._observation(), {}
 
         def register_seed_evaluation(self, evaluation: Any) -> None:
             self.best_mask = self.seed_mask.copy()
             self.best_evaluation = evaluation
+
+        def set_global_step(self, global_step: int) -> None:
+            self.global_step = int(max(0, global_step))
 
         def _is_better_evaluation(self, evaluation: Any, incumbent: Any | None) -> bool:
             if incumbent is None:
@@ -329,7 +403,34 @@ if gym is not None:  # pragma: no cover - optional dependency
                 self.best_mask = self.mask.copy()
                 self.best_evaluation = evaluation
 
+        def _cosine_similarity_to_best(self) -> float:
+            best = np.asarray(self.best_mask, dtype=np.float32).ravel()
+            current = np.asarray(self.mask, dtype=np.float32).ravel()
+            norm = float(np.linalg.norm(best) * np.linalg.norm(current))
+            if norm <= 1e-12:
+                return 0.0
+            return float(np.dot(best, current) / norm)
+
+        def _should_skip_fea(self) -> bool:
+            if self.config.rl_skip_threshold <= 0.0:
+                return False
+            total_steps = max(int(self.config.rl_total_timesteps), 1)
+            warmup = self.config.rl_skip_warmup_fraction * total_steps
+            if self.global_step < warmup:
+                return False
+            if self.best_evaluation is None:
+                return False
+            if not bool(getattr(self.best_evaluation, "passed_filters", False)):
+                return False
+            similarity = self._cosine_similarity_to_best()
+            return similarity >= float(self.config.rl_skip_threshold)
+
         def step(self, action: int):
+            if self.sparse_reward:
+                return self._step_sparse(action)
+            return self._step_dense(action)
+
+        def _step_dense(self, action: int):
             masks = self.action_masks()
             if not masks[action]:
                 reward = -1.0
@@ -355,6 +456,68 @@ if gym is not None:  # pragma: no cover - optional dependency
                 reward = self._terminal_reward(evaluation)
                 info["evaluation"] = evaluation
             return self._observation(), float(reward), terminated, False, info
+
+        def _step_sparse(self, action: int):
+            masks = self.action_masks()
+            if not masks[action]:
+                self.step_count += 1
+                terminated = self.step_count >= self.config.max_episode_steps
+                info: dict[str, Any] = {"invalid_action": True}
+                if terminated:
+                    reward = self._finalize_sparse_reward(info, stopped=False)
+                    return self._observation(), float(reward), True, False, info
+                return self._observation(), -0.01, False, False, info
+
+            selected = self.catalog[action]
+            self.step_count += 1
+            info = {}
+            if selected.kind == "stop":
+                info["stopped"] = True
+                reward = self._finalize_sparse_reward(info, stopped=True)
+                return self._observation(), float(reward), True, False, info
+
+            self.mask = apply_action(self.mask, selected)
+            terminated = self.step_count >= self.config.max_episode_steps
+            if terminated:
+                reward = self._finalize_sparse_reward(info, stopped=False)
+                return self._observation(), float(reward), True, False, info
+            return self._observation(), 0.0, False, False, info
+
+        def _finalize_sparse_reward(self, info: dict[str, Any], *, stopped: bool) -> float:
+            skipped = self._should_skip_fea()
+            info["fea_skipped"] = bool(skipped)
+            info["stopped_by_agent"] = bool(stopped)
+            if skipped:
+                info["evaluation"] = self.best_evaluation
+                return 0.0
+            can_eval = self.stage_full_eval_calls < self.config.max_rl_full_evals
+            if not can_eval:
+                info["fea_budget_exhausted"] = True
+                info["evaluation"] = self.best_evaluation
+                return 0.0
+            evaluation = self.evaluator.evaluate(self.mask, "full64")
+            self.full_eval_calls += 1
+            self.stage_full_eval_calls += 1
+            self.last_full_score = evaluation.score
+            self._update_best(evaluation)
+            info["evaluation"] = evaluation
+            if not evaluation.passed_filters:
+                return float(self.config.rl_infeasible_terminal_reward)
+            return float(self._harmonic_reward(evaluation))
+
+        def _harmonic_reward(self, evaluation: Any) -> float:
+            compliance = max(float(evaluation.compliance), 1e-6)
+            volume_gap = abs(float(evaluation.volume_fraction) - self.config.volume_target)
+            smoothness_norm = float(evaluation.smoothness) / max(self.mask.size, 1)
+            islands_penalty = max(int(evaluation.islands) - 1, 0)
+            penalty = volume_gap + 0.05 * smoothness_norm + 0.10 * islands_penalty
+            clamp = float(self.config.rl_harmonic_clamp)
+            a1 = min(1.0 / compliance, clamp)
+            a2 = min(1.0 / (1.0 + penalty), clamp)
+            denom = a1 + a2
+            if denom <= 1e-12:
+                return 0.0
+            return float(2.0 * a1 * a2 / denom)
 
         def _intermediate_reward(self) -> float:
             volume_gap = abs(volume_fraction(self.mask) - self.config.volume_target)

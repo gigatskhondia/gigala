@@ -62,6 +62,16 @@ class ProblemConfig:
     rl_stress_hotspot_dilate: int = 1
     rl_stop_penalty: float = 0.05
     rl_degenerate_episode_window: int = 32
+    rl_sparse_reward: bool = False
+    rl_n_envs: int = 1
+    rl_inference_rollouts: int = 1
+    rl_policy_size: Literal["small", "large"] = "small"
+    rl_volume_slack_lower: float = 0.05
+    rl_volume_slack_upper: float = 0.05
+    rl_skip_threshold: float = 0.95
+    rl_skip_warmup_fraction: float = 0.3
+    rl_harmonic_clamp: float = 10.0
+    rl_infeasible_terminal_reward: float = -1.0
     max_full_evals: int = 20_000
     max_rl_full_evals: int = 5_000
     density_floor: float = 1e-4
@@ -97,6 +107,20 @@ class ProblemConfig:
             raise ValueError("rl_stop_penalty must be >= 0.")
         if self.rl_degenerate_episode_window < 0:
             raise ValueError("rl_degenerate_episode_window must be >= 0.")
+        if self.rl_n_envs < 1:
+            raise ValueError("rl_n_envs must be >= 1.")
+        if self.rl_inference_rollouts < 1:
+            raise ValueError("rl_inference_rollouts must be >= 1.")
+        if self.rl_policy_size not in ("small", "large"):
+            raise ValueError("rl_policy_size must be 'small' or 'large'.")
+        if self.rl_volume_slack_lower < 0.0 or self.rl_volume_slack_upper < 0.0:
+            raise ValueError("rl_volume_slack_lower/upper must be >= 0.")
+        if not 0.0 <= self.rl_skip_threshold <= 1.0:
+            raise ValueError("rl_skip_threshold must be in [0, 1].")
+        if not 0.0 <= self.rl_skip_warmup_fraction <= 1.0:
+            raise ValueError("rl_skip_warmup_fraction must be in [0, 1].")
+        if self.rl_harmonic_clamp <= 0.0:
+            raise ValueError("rl_harmonic_clamp must be > 0.")
 
     @property
     def stage_resolutions(self) -> tuple[int, ...]:

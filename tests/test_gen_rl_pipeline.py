@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import unittest
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -10,12 +11,13 @@ from unittest.mock import patch
 import numpy as np
 
 from gigala.topology.topology_optimiz.gen_rl import ProblemConfig, run_direct64_exact_search, run_multistage_search, run_rl_only_exact_search
-from gigala.topology.topology_optimiz.gen_rl.cli import _save_outputs, main as cli_main
+from gigala.topology.topology_optimiz.gen_rl.cli import _git_version_info, _save_outputs, _summary_payload, main as cli_main
 from gigala.topology.topology_optimiz.gen_rl.direct_search import _init_worker, build_mutation_coverage, evaluate_exact_batch
 from gigala.topology.topology_optimiz.gen_rl.fem import ElementFieldDiagnostics, EvalResult, Evaluator
 from gigala.topology.topology_optimiz.gen_rl.pipeline import DirectRLDegeneracyMonitor, _resolve_rl_device
 import gigala.topology.topology_optimiz.gen_rl.pipeline as pipeline_module
 from gigala.topology.topology_optimiz.gen_rl.refine_env import (
+    apply_action,
     build_action_catalog,
     build_direct_action_catalog,
     compute_action_mask,
@@ -23,6 +25,7 @@ from gigala.topology.topology_optimiz.gen_rl.refine_env import (
     compute_direct_editable_masks,
     gym,
     make_direct64_refine_env,
+    make_refine_env,
 )
 from gigala.topology.topology_optimiz.gen_rl.representation import upsample_binary_mask
 
@@ -736,6 +739,279 @@ class PipelineTests(unittest.TestCase):
             self.assertTrue(best_path.exists())
             self.assertTrue(archive_path.exists())
             self.assertTrue(best_png_path.exists())
+
+    def test_stop_action_appears_only_when_requested(self) -> None:
+        resolution = 8
+        default_catalog = build_action_catalog(resolution)
+        stop_catalog = build_action_catalog(resolution, include_stop=True)
+        self.assertEqual(len(stop_catalog), len(default_catalog) + 1)
+        self.assertEqual(stop_catalog[-1].kind, "stop")
+        self.assertFalse(any(action.kind == "stop" for action in default_catalog))
+
+    def test_volume_aware_mask_blocks_add_above_upper_slack(self) -> None:
+        resolution = 8
+        mask = np.ones((resolution, resolution), dtype=np.uint8)
+        mask[0, 0] = 0
+        immutable = np.zeros_like(mask, dtype=np.uint8)
+        catalog = build_action_catalog(resolution, include_stop=True)
+        action_mask = compute_action_mask(
+            mask,
+            catalog,
+            immutable,
+            frontier_width=2,
+            volume_target=0.55,
+            volume_slack_lower=0.05,
+            volume_slack_upper=0.05,
+            volume_tolerance=0.20,
+        )
+        add_idx = next(
+            idx
+            for idx, action in enumerate(catalog)
+            if action.kind == "add_1x1" and action.row == 0 and action.col == 0
+        )
+        self.assertFalse(bool(action_mask[add_idx]))
+
+    def test_volume_aware_mask_blocks_remove_below_lower_slack(self) -> None:
+        resolution = 8
+        mask = np.zeros((resolution, resolution), dtype=np.uint8)
+        mask[:6, :5] = 1
+        immutable = np.zeros_like(mask, dtype=np.uint8)
+        catalog = build_action_catalog(resolution, include_stop=True)
+        action_mask = compute_action_mask(
+            mask,
+            catalog,
+            immutable,
+            frontier_width=2,
+            volume_target=0.45,
+            volume_slack_lower=0.05,
+            volume_slack_upper=0.05,
+            volume_tolerance=0.20,
+        )
+        large_removal_indices = [
+            idx for idx, action in enumerate(catalog) if action.kind == "remove_4x4"
+        ]
+        self.assertTrue(large_removal_indices)
+        self.assertFalse(any(bool(action_mask[idx]) for idx in large_removal_indices))
+
+    def test_stop_action_only_available_inside_feasible_band(self) -> None:
+        resolution = 8
+        full_solid = np.ones((resolution, resolution), dtype=np.uint8)
+        immutable = np.zeros_like(full_solid, dtype=np.uint8)
+        catalog = build_action_catalog(resolution, include_stop=True)
+        stop_idx = len(catalog) - 1
+
+        solid_mask = compute_action_mask(
+            full_solid,
+            catalog,
+            immutable,
+            frontier_width=2,
+            volume_target=0.55,
+            volume_slack_lower=0.05,
+            volume_slack_upper=0.05,
+            volume_tolerance=0.20,
+        )
+        self.assertFalse(bool(solid_mask[stop_idx]))
+
+        feasible_mask = np.zeros_like(full_solid)
+        feasible_mask.flat[: int(0.55 * resolution * resolution)] = 1
+        feasible_action_mask = compute_action_mask(
+            feasible_mask,
+            catalog,
+            immutable,
+            frontier_width=2,
+            volume_target=0.55,
+            volume_slack_lower=0.05,
+            volume_slack_upper=0.05,
+            volume_tolerance=0.20,
+        )
+        self.assertTrue(bool(feasible_action_mask[stop_idx]))
+
+    def test_apply_action_stop_preserves_mask(self) -> None:
+        from gigala.topology.topology_optimiz.gen_rl.refine_env import GridAction
+
+        mask = np.zeros((6, 6), dtype=np.uint8)
+        mask[2:4, 2:4] = 1
+        stop_action = GridAction("stop", 0, 0, 0)
+        result = apply_action(mask, stop_action)
+        self.assertTrue(np.array_equal(result, mask))
+
+    def test_refine_env_reset_clears_stage_full_eval_calls(self) -> None:
+        if gym is None:
+            self.skipTest("gymnasium is unavailable")
+        config = ProblemConfig(
+            resolution=8,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            max_full_evals=32,
+            max_rl_full_evals=32,
+            max_episode_steps=8,
+            rl_sparse_reward=False,
+        )
+        seed = np.ones((8, 8), dtype=np.uint8)
+        env = make_refine_env(seed, config)
+        env.stage_full_eval_calls = 999
+        env.full_eval_calls = 999
+        env.reset()
+        self.assertEqual(env.stage_full_eval_calls, 0)
+        self.assertEqual(env.full_eval_calls, 0)
+
+    def test_sparse_reward_terminal_harmonic_positive_on_feasible(self) -> None:
+        if gym is None:
+            self.skipTest("gymnasium is unavailable")
+        config = ProblemConfig(
+            resolution=8,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            max_full_evals=32,
+            max_rl_full_evals=32,
+            max_episode_steps=16,
+            rl_sparse_reward=True,
+            volume_target=0.5,
+            volume_tolerance=0.20,
+            rl_volume_slack_lower=0.1,
+            rl_volume_slack_upper=0.1,
+            rl_skip_threshold=0.0,
+        )
+        seed = np.zeros((8, 8), dtype=np.uint8)
+        seed.flat[: 8 * 8 // 2] = 1
+        env = make_refine_env(seed, config)
+        stop_idx = env.stop_action_index
+        self.assertIsNotNone(stop_idx)
+        env.reset()
+
+        feasible_eval = EvalResult(
+            fidelity="full64",
+            resolution=8,
+            compliance=10.0,
+            score=10.0,
+            volume_fraction=0.5,
+            smoothness=4,
+            islands=1,
+            fea_performed=True,
+            cache_hit=False,
+            passed_filters=True,
+        )
+        with patch.object(env.evaluator, "evaluate", return_value=feasible_eval):
+            _obs, reward, terminated, _truncated, info = env.step(stop_idx)
+        self.assertTrue(terminated)
+        self.assertTrue(info["stopped"])
+        self.assertGreater(reward, 0.0)
+        self.assertFalse(info.get("fea_skipped", False))
+
+    def test_sparse_reward_penalizes_infeasible_terminal(self) -> None:
+        if gym is None:
+            self.skipTest("gymnasium is unavailable")
+        config = ProblemConfig(
+            resolution=8,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            max_full_evals=32,
+            max_rl_full_evals=32,
+            max_episode_steps=4,
+            rl_sparse_reward=True,
+            volume_target=0.5,
+            rl_volume_slack_lower=0.5,
+            rl_volume_slack_upper=0.5,
+            rl_skip_threshold=0.0,
+            rl_infeasible_terminal_reward=-0.75,
+        )
+        seed = np.ones((8, 8), dtype=np.uint8)
+        env = make_refine_env(seed, config)
+        env.reset()
+        infeasible_eval = EvalResult(
+            fidelity="full64",
+            resolution=8,
+            compliance=1e12,
+            score=1e12,
+            volume_fraction=1.0,
+            smoothness=0,
+            islands=1,
+            fea_performed=False,
+            cache_hit=False,
+            passed_filters=False,
+            invalid_reason="volume_out_of_range",
+        )
+        action_mask = env.action_masks()
+        non_stop_indices = np.flatnonzero(action_mask[:-1])
+        self.assertGreater(non_stop_indices.size, 0)
+        action = int(non_stop_indices[0])
+        with patch.object(env.evaluator, "evaluate", return_value=infeasible_eval):
+            for _ in range(config.max_episode_steps - 1):
+                _obs, reward, terminated, _truncated, info = env.step(action)
+                if terminated:
+                    break
+            if not terminated:
+                _obs, reward, terminated, _truncated, info = env.step(action)
+        self.assertTrue(terminated)
+        self.assertAlmostEqual(reward, config.rl_infeasible_terminal_reward, places=6)
+
+    def test_sparse_reward_intermediate_steps_return_zero(self) -> None:
+        if gym is None:
+            self.skipTest("gymnasium is unavailable")
+        config = ProblemConfig(
+            resolution=8,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            max_full_evals=32,
+            max_rl_full_evals=32,
+            max_episode_steps=16,
+            rl_sparse_reward=True,
+            volume_target=0.5,
+            rl_volume_slack_lower=0.5,
+            rl_volume_slack_upper=0.5,
+            rl_skip_threshold=0.0,
+        )
+        seed = np.ones((8, 8), dtype=np.uint8)
+        env = make_refine_env(seed, config)
+        env.reset()
+        action_mask = env.action_masks()
+        non_stop_indices = np.flatnonzero(action_mask[:-1])
+        action = int(non_stop_indices[0])
+        _obs, reward, terminated, _truncated, info = env.step(action)
+        self.assertFalse(terminated)
+        self.assertEqual(reward, 0.0)
+        self.assertNotIn("evaluation", info)
+
+    def test_summary_payload_includes_git_version_info(self) -> None:
+        fake_git = {
+            "branch": "feature/demo",
+            "commit": "abc123def456abc123def456abc123def456abcd",
+            "commit_short": "abc123def456",
+            "dirty": True,
+            "commit_subject": "demo commit",
+            "commit_time": "2026-04-19T14:00:00+00:00",
+        }
+        config = ProblemConfig(resolution=20, pipeline_mode="rl_only_exact", enable_rl=False)
+        artifacts = SimpleNamespace(
+            runtime=1.0,
+            fea_counts={"proxy16": 0.0, "proxy32": 0.0, "full64": 0.0, "cache_hits": 0.0, "cache_size": 0.0},
+            warnings=[],
+            metrics={},
+        )
+        with patch("gigala.topology.topology_optimiz.gen_rl.cli._git_version_info", return_value=fake_git):
+            payload = _summary_payload(config, artifacts)
+        self.assertEqual(payload["git"], fake_git)
+
+    def test_git_version_info_returns_repo_metadata(self) -> None:
+        info = _git_version_info()
+        self.assertIsInstance(info, dict)
+        self.assertIn("branch", info)
+        self.assertIn("commit", info)
+        self.assertIn("dirty", info)
+        if info["commit"] is not None:
+            self.assertIsInstance(info["commit"], str)
+            self.assertGreaterEqual(len(info["commit"]), 7)
+
+    def test_git_version_info_respects_environment_overrides(self) -> None:
+        overrides = {
+            "GEN_RL_GIT_COMMIT": "0" * 40,
+            "GEN_RL_GIT_BRANCH": "override-branch",
+        }
+        with patch.dict(os.environ, overrides, clear=False):
+            info = _git_version_info()
+        self.assertEqual(info["commit"], "0" * 40)
+        self.assertEqual(info["commit_short"], "0" * 12)
+        self.assertEqual(info["branch"], "override-branch")
 
     def test_save_outputs_serializes_eval_results_inside_direct_diagnostics(self) -> None:
         with TemporaryDirectory() as tmp_dir:
