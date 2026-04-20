@@ -24,8 +24,16 @@ RL_SKIP_WARMUP_FRACTION=${GEN_RL_RL_SKIP_WARMUP_FRACTION:-0.3}
 RL_HARMONIC_CLAMP=${GEN_RL_RL_HARMONIC_CLAMP:-10.0}
 RL_INFEASIBLE_TERMINAL_REWARD=${GEN_RL_RL_INFEASIBLE_TERMINAL_REWARD:--1.0}
 RL_ENT_COEF=${GEN_RL_RL_ENT_COEF:-0.03}
+RL_ENT_COEF_FINAL=${GEN_RL_RL_ENT_COEF_FINAL:-0.005}
 RL_TARGET_KL=${GEN_RL_RL_TARGET_KL:-0.03}
+RL_TARGET_KL_FINAL=${GEN_RL_RL_TARGET_KL_FINAL:-0.08}
+RL_LR_INITIAL=${GEN_RL_RL_LR_INITIAL:-3e-4}
+RL_LR_FINAL=${GEN_RL_RL_LR_FINAL:-5e-5}
+RL_LR_SCHEDULE=${GEN_RL_RL_LR_SCHEDULE:-cosine}
+RL_BATCH_SIZE=${GEN_RL_RL_BATCH_SIZE:-256}
 RL_BEST_HARVEST_TOPK=${GEN_RL_RL_BEST_HARVEST_TOPK:-4}
+RL_VOLUME_TOLERANCE=${GEN_RL_RL_VOLUME_TOLERANCE:-0.03}
+RL_SEED_STRATEGY=${GEN_RL_RL_SEED_STRATEGY:-random_near_target}
 MAX_EPISODE_STEPS=${GEN_RL_MAX_EPISODE_STEPS:-800}
 RANDOM_SEED=${GEN_RL_RANDOM_SEED:-42}
 # Small policy/network on 20x20 is fastest on CPU across Apple Silicon (M1..M4)
@@ -50,7 +58,7 @@ cd "$REPO_ROOT"
 
 echo "Running RL-only 20x20 gen_rl pipeline from ${REPO_ROOT}"
 echo "Default output directory: ${OUTPUT_DIR}"
-echo "Defaults: RL enabled, rl_device=${RL_DEVICE}, rl_total_timesteps=${RL_TOTAL_TIMESTEPS}, rl_n_envs=${RL_N_ENVS}, policy_size=${RL_POLICY_SIZE}, sparse_reward=${SPARSE_FLAG}, max_episode_steps=${MAX_EPISODE_STEPS}, ent_coef=${RL_ENT_COEF}, target_kl=${RL_TARGET_KL}, best_harvest_topk=${RL_BEST_HARVEST_TOPK}"
+echo "Defaults: RL enabled, rl_device=${RL_DEVICE}, rl_total_timesteps=${RL_TOTAL_TIMESTEPS}, rl_n_envs=${RL_N_ENVS}, policy_size=${RL_POLICY_SIZE}, sparse_reward=${SPARSE_FLAG}, max_episode_steps=${MAX_EPISODE_STEPS}, ent_coef=${RL_ENT_COEF}->${RL_ENT_COEF_FINAL}, target_kl=${RL_TARGET_KL}->${RL_TARGET_KL_FINAL}, lr=${RL_LR_INITIAL}->${RL_LR_FINAL} (${RL_LR_SCHEDULE}), batch_size=${RL_BATCH_SIZE}, best_harvest_topk=${RL_BEST_HARVEST_TOPK}, rl_volume_tolerance=${RL_VOLUME_TOLERANCE}, rl_seed_strategy=${RL_SEED_STRATEGY}"
 
 exec "${PYTHON_BIN}" -m gigala.topology.topology_optimiz.gen_rl \
   ${RL_FLAG:+$RL_FLAG} \
@@ -72,8 +80,16 @@ exec "${PYTHON_BIN}" -m gigala.topology.topology_optimiz.gen_rl \
   --rl-harmonic-clamp "${RL_HARMONIC_CLAMP}" \
   --rl-infeasible-terminal-reward "${RL_INFEASIBLE_TERMINAL_REWARD}" \
   --rl-ent-coef "${RL_ENT_COEF}" \
+  --rl-ent-coef-final "${RL_ENT_COEF_FINAL}" \
   --rl-target-kl "${RL_TARGET_KL}" \
+  --rl-target-kl-final "${RL_TARGET_KL_FINAL}" \
+  --rl-lr-initial "${RL_LR_INITIAL}" \
+  --rl-lr-final "${RL_LR_FINAL}" \
+  --rl-lr-schedule "${RL_LR_SCHEDULE}" \
+  --rl-batch-size "${RL_BATCH_SIZE}" \
   --rl-best-harvest-topk "${RL_BEST_HARVEST_TOPK}" \
+  --rl-volume-tolerance "${RL_VOLUME_TOLERANCE}" \
+  --rl-seed-strategy "${RL_SEED_STRATEGY}" \
   --max-episode-steps "${MAX_EPISODE_STEPS}" \
   ${SPARSE_REWARD_FLAG} \
   --max-full-evals "${MAX_FULL_EVALS}" \

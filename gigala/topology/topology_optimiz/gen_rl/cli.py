@@ -171,13 +171,55 @@ def build_parser() -> argparse.ArgumentParser:
         "--rl-ent-coef",
         type=float,
         default=0.03,
-        help="Entropy bonus coefficient passed to MaskablePPO. Prevents entropy collapse on sparse rewards.",
+        help="Initial entropy bonus coefficient for MaskablePPO. Linearly decays toward --rl-ent-coef-final.",
+    )
+    parser.add_argument(
+        "--rl-ent-coef-final",
+        type=float,
+        default=0.005,
+        help="Final entropy coefficient at the end of training (linear schedule).",
     )
     parser.add_argument(
         "--rl-target-kl",
         type=float,
         default=0.03,
-        help="Target KL divergence threshold for MaskablePPO. Set to 0 to disable.",
+        help="Initial KL-divergence threshold for MaskablePPO early stopping. Set to 0 to disable.",
+    )
+    parser.add_argument(
+        "--rl-target-kl-final",
+        type=float,
+        default=0.08,
+        help="Final target KL at the end of training (linear schedule, relaxes late-stage updates).",
+    )
+    parser.add_argument(
+        "--rl-lr-initial",
+        type=float,
+        default=3e-4,
+        help="Initial learning rate (cosine schedule start). Set --rl-lr-schedule=constant to keep constant.",
+    )
+    parser.add_argument(
+        "--rl-lr-final",
+        type=float,
+        default=5e-5,
+        help="Final learning rate (cosine schedule end).",
+    )
+    parser.add_argument(
+        "--rl-lr-schedule",
+        default="cosine",
+        choices=("constant", "cosine"),
+        help="Learning-rate schedule shape. Default: cosine.",
+    )
+    parser.add_argument(
+        "--rl-schedule-hparams",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable linear schedules for ent_coef and target_kl during training.",
+    )
+    parser.add_argument(
+        "--rl-batch-size",
+        type=int,
+        default=256,
+        help="PPO minibatch size. Default 256 (vs SB3 default 64) for larger late-stage updates.",
     )
     parser.add_argument(
         "--rl-best-harvest-topk",
@@ -187,6 +229,61 @@ def build_parser() -> argparse.ArgumentParser:
             "Top-K feasible candidates per rollout to re-evaluate in the main evaluator "
             "during training. Set to 0 to disable training-best harvesting."
         ),
+    )
+    parser.add_argument(
+        "--rl-volume-tolerance",
+        type=float,
+        default=0.03,
+        help=(
+            "Tight feasibility band used in rl_only_exact: a mask is feasible iff "
+            "|volume - target| <= rl_volume_tolerance. Replaces the legacy 0.20 band "
+            "which let PPO cheat by stopping at an inflated volume. Ignored outside "
+            "rl_only_exact."
+        ),
+    )
+    parser.add_argument(
+        "--rl-reward-baseline-score",
+        type=float,
+        default=100.0,
+        help=(
+            "Baseline score used inside the monotone terminal reward "
+            "reward = baseline / (baseline + score). Larger baseline flattens the "
+            "reward (milder distinction between good and bad feasible masks); "
+            "smaller baseline is steeper. Default 100 is calibrated for 20x20."
+        ),
+    )
+    parser.add_argument(
+        "--rl-seed-strategy",
+        default="random_near_target",
+        choices=("full_solid", "random_near_target"),
+        help=(
+            "Warm-start strategy for rl_only_exact. 'random_near_target' starts "
+            "from a random topology at volume ~ target+slack_upper (drops ~N/2 "
+            "initial removal steps). 'full_solid' keeps the legacy behaviour."
+        ),
+    )
+    parser.add_argument(
+        "--rl-potential-shaping",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Add Ng-Harada-Russell potential-based shaping F = gamma*Phi(s') - Phi(s) "
+            "to every step. Phi penalises volume-gap, missing support/load contact "
+            "and island count. Preserves the optimal policy but gives PPO a dense "
+            "gradient during otherwise sparse-terminal episodes."
+        ),
+    )
+    parser.add_argument(
+        "--rl-shaping-gamma",
+        type=float,
+        default=0.99,
+        help="Discount used inside the shaping telescoping sum. Should match the PPO gamma.",
+    )
+    parser.add_argument(
+        "--rl-shaping-scale",
+        type=float,
+        default=1.0,
+        help="Global scale for the shaping potential Phi. Reduce if shaping dominates terminal reward.",
     )
     parser.add_argument(
         "--max-episode-steps",
@@ -314,8 +411,25 @@ def _summary_payload(config: ProblemConfig, artifacts: Any) -> dict[str, Any]:
             "rl_harmonic_clamp": config.rl_harmonic_clamp,
             "rl_infeasible_terminal_reward": config.rl_infeasible_terminal_reward,
             "rl_ent_coef": config.rl_ent_coef,
+            "rl_ent_coef_final": config.rl_ent_coef_final,
             "rl_target_kl": config.rl_target_kl,
+            "rl_target_kl_final": config.rl_target_kl_final,
+            "rl_lr_initial": config.rl_lr_initial,
+            "rl_lr_final": config.rl_lr_final,
+            "rl_lr_schedule": config.rl_lr_schedule,
+            "rl_schedule_hparams": config.rl_schedule_hparams,
+            "rl_batch_size": config.rl_batch_size,
             "rl_best_harvest_topk": config.rl_best_harvest_topk,
+            "rl_volume_tolerance": config.rl_volume_tolerance,
+            "effective_volume_tolerance": config.effective_volume_tolerance,
+            "rl_reward_baseline_score": config.rl_reward_baseline_score,
+            "rl_seed_strategy": config.rl_seed_strategy,
+            "rl_potential_shaping": config.rl_potential_shaping,
+            "rl_shaping_gamma": config.rl_shaping_gamma,
+            "rl_shaping_scale": config.rl_shaping_scale,
+            "rl_shaping_w_volume": config.rl_shaping_w_volume,
+            "rl_shaping_w_contact": config.rl_shaping_w_contact,
+            "rl_shaping_w_islands": config.rl_shaping_w_islands,
             "max_episode_steps": config.max_episode_steps,
             "coarse_population": config.coarse_population,
             "coarse_generations": config.coarse_generations,
@@ -471,8 +585,21 @@ def main(argv: list[str] | None = None) -> int:
         rl_harmonic_clamp=args.rl_harmonic_clamp,
         rl_infeasible_terminal_reward=args.rl_infeasible_terminal_reward,
         rl_ent_coef=args.rl_ent_coef,
+        rl_ent_coef_final=args.rl_ent_coef_final,
         rl_target_kl=args.rl_target_kl,
+        rl_target_kl_final=args.rl_target_kl_final,
+        rl_lr_initial=args.rl_lr_initial,
+        rl_lr_final=args.rl_lr_final,
+        rl_lr_schedule=args.rl_lr_schedule,
+        rl_schedule_hparams=args.rl_schedule_hparams,
+        rl_batch_size=args.rl_batch_size,
         rl_best_harvest_topk=args.rl_best_harvest_topk,
+        rl_volume_tolerance=args.rl_volume_tolerance,
+        rl_reward_baseline_score=args.rl_reward_baseline_score,
+        rl_seed_strategy=args.rl_seed_strategy,
+        rl_potential_shaping=args.rl_potential_shaping,
+        rl_shaping_gamma=args.rl_shaping_gamma,
+        rl_shaping_scale=args.rl_shaping_scale,
         max_episode_steps=args.max_episode_steps,
         coarse_population=args.coarse_population,
         coarse_generations=args.coarse_generations,

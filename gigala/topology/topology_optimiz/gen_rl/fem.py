@@ -73,12 +73,28 @@ class ProblemConfig:
     rl_harmonic_clamp: float = 10.0
     rl_infeasible_terminal_reward: float = -1.0
     rl_ent_coef: float = 0.03
+    rl_ent_coef_final: float = 0.005
     rl_target_kl: float = 0.03
+    rl_target_kl_final: float = 0.08
+    rl_lr_initial: float = 3e-4
+    rl_lr_final: float = 5e-5
+    rl_lr_schedule: Literal["constant", "cosine"] = "cosine"
+    rl_schedule_hparams: bool = True
+    rl_batch_size: int = 256
     rl_best_harvest_topk: int = 4
+    rl_reward_baseline_score: float = 100.0
+    rl_potential_shaping: bool = True
+    rl_shaping_gamma: float = 0.99
+    rl_shaping_scale: float = 1.0
+    rl_shaping_w_volume: float = 1.0
+    rl_shaping_w_contact: float = 0.5
+    rl_shaping_w_islands: float = 0.5
+    rl_seed_strategy: Literal["full_solid", "random_near_target"] = "random_near_target"
     max_full_evals: int = 20_000
     max_rl_full_evals: int = 5_000
     density_floor: float = 1e-4
     volume_tolerance: float = 0.20
+    rl_volume_tolerance: float = 0.03
     smoothness_weight: float = 0.10
     island_weight: float = 0.35
     volume_weight: float = 1.00
@@ -130,6 +146,41 @@ class ProblemConfig:
             raise ValueError("rl_target_kl must be >= 0.")
         if self.rl_best_harvest_topk < 0:
             raise ValueError("rl_best_harvest_topk must be >= 0.")
+        if self.rl_volume_tolerance <= 0.0:
+            raise ValueError("rl_volume_tolerance must be > 0.")
+        if self.rl_reward_baseline_score <= 0.0:
+            raise ValueError("rl_reward_baseline_score must be > 0.")
+        if not 0.0 <= self.rl_shaping_gamma <= 1.0:
+            raise ValueError("rl_shaping_gamma must be in [0, 1].")
+        if self.rl_shaping_scale < 0.0:
+            raise ValueError("rl_shaping_scale must be >= 0.")
+        for field_name in ("rl_shaping_w_volume", "rl_shaping_w_contact", "rl_shaping_w_islands"):
+            if getattr(self, field_name) < 0.0:
+                raise ValueError(f"{field_name} must be >= 0.")
+        if self.rl_seed_strategy not in ("full_solid", "random_near_target"):
+            raise ValueError("rl_seed_strategy must be 'full_solid' or 'random_near_target'.")
+        if self.rl_ent_coef_final < 0.0:
+            raise ValueError("rl_ent_coef_final must be >= 0.")
+        if self.rl_target_kl_final < 0.0:
+            raise ValueError("rl_target_kl_final must be >= 0.")
+        if self.rl_lr_initial <= 0.0 or self.rl_lr_final <= 0.0:
+            raise ValueError("rl_lr_initial and rl_lr_final must be > 0.")
+        if self.rl_lr_schedule not in ("constant", "cosine"):
+            raise ValueError("rl_lr_schedule must be 'constant' or 'cosine'.")
+        if self.rl_batch_size < 1:
+            raise ValueError("rl_batch_size must be >= 1.")
+
+    @property
+    def effective_volume_tolerance(self) -> float:
+        """Volume tolerance used by feasibility filters and action masking.
+
+        In rl_only_exact we want a tight band so the agent is not rewarded for
+        stopping with an inflated volume. GA-driven modes keep the legacy
+        wide band.
+        """
+        if self.pipeline_mode == "rl_only_exact":
+            return float(self.rl_volume_tolerance)
+        return float(self.volume_tolerance)
 
     @property
     def stage_resolutions(self) -> tuple[int, ...]:
@@ -385,7 +436,7 @@ class Evaluator:
         volume = volume_fraction(mask)
         if volume == 0:
             return False, "empty_mask"
-        if abs(volume - self.config.volume_target) > self.config.volume_tolerance:
+        if abs(volume - self.config.volume_target) > self.config.effective_volume_tolerance:
             return False, "volume_out_of_range"
         if not touches_region(mask, setup.support_mask):
             return False, "missing_support_contact"

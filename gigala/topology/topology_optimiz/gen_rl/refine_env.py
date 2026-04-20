@@ -369,7 +369,7 @@ if gym is not None:  # pragma: no cover - optional dependency
                     volume_target=self.config.volume_target,
                     volume_slack_lower=self.config.rl_volume_slack_lower,
                     volume_slack_upper=self.config.rl_volume_slack_upper,
-                    volume_tolerance=self.config.volume_tolerance,
+                    volume_tolerance=self.config.effective_volume_tolerance,
                 )
             return compute_action_mask(
                 self.mask,
@@ -386,6 +386,17 @@ if gym is not None:  # pragma: no cover - optional dependency
             self.stage_full_eval_calls = 0
             self.last_full_score = np.inf
             return self._observation(), {}
+
+        def set_seed_mask(self, new_seed_mask: np.ndarray) -> None:
+            """Swap the env's seed mask. Used at inference time to start rollouts
+            from the harvested best mask instead of the training seed.
+            """
+            new_seed = ensure_binary(new_seed_mask)
+            if new_seed.shape != self.mask.shape:
+                raise ValueError(
+                    f"Seed mask shape {new_seed.shape} does not match env shape {self.mask.shape}."
+                )
+            self.seed_mask = np.ascontiguousarray(new_seed, dtype=np.uint8).copy()
 
         def register_seed_evaluation(self, evaluation: Any) -> None:
             self.best_mask = self.seed_mask.copy()
@@ -464,29 +475,42 @@ if gym is not None:  # pragma: no cover - optional dependency
 
         def _step_sparse(self, action: int):
             masks = self.action_masks()
+            phi_before = self._potential()
             if not masks[action]:
                 self.step_count += 1
                 terminated = self.step_count >= self.config.max_episode_steps
                 info: dict[str, Any] = {"invalid_action": True}
                 if terminated:
-                    reward = self._finalize_sparse_reward(info, stopped=False)
+                    base = self._finalize_sparse_reward(info, stopped=False)
+                    reward = base + self._shaping(phi_before=phi_before, terminal=True)
+                    info["shaping_terminal"] = float(reward - base)
                     return self._observation(), float(reward), True, False, info
-                return self._observation(), -0.01, False, False, info
+                # Invalid non-terminal action: keep the small nudge, add shaping
+                # (mask unchanged so shaping = (gamma - 1) * phi_before).
+                shaping = self._shaping(phi_before=phi_before, terminal=False)
+                info["shaping_step"] = float(shaping)
+                return self._observation(), -0.01 + shaping, False, False, info
 
             selected = self.catalog[action]
             self.step_count += 1
             info = {}
             if selected.kind == "stop":
                 info["stopped"] = True
-                reward = self._finalize_sparse_reward(info, stopped=True)
+                base = self._finalize_sparse_reward(info, stopped=True)
+                reward = base + self._shaping(phi_before=phi_before, terminal=True)
+                info["shaping_terminal"] = float(reward - base)
                 return self._observation(), float(reward), True, False, info
 
             self.mask = apply_action(self.mask, selected)
             terminated = self.step_count >= self.config.max_episode_steps
             if terminated:
-                reward = self._finalize_sparse_reward(info, stopped=False)
+                base = self._finalize_sparse_reward(info, stopped=False)
+                reward = base + self._shaping(phi_before=phi_before, terminal=True)
+                info["shaping_terminal"] = float(reward - base)
                 return self._observation(), float(reward), True, False, info
-            return self._observation(), 0.0, False, False, info
+            shaping = self._shaping(phi_before=phi_before, terminal=False)
+            info["shaping_step"] = float(shaping)
+            return self._observation(), float(shaping), False, False, info
 
         def _finalize_sparse_reward(self, info: dict[str, Any], *, stopped: bool) -> float:
             skipped = self._should_skip_fea()
@@ -514,16 +538,58 @@ if gym is not None:  # pragma: no cover - optional dependency
             reason = "passed" if evaluation.passed_filters else (evaluation.invalid_reason or "failed_filters")
             info["terminal_reason"] = reason
             self._record_terminal_reason(reason)
-            if not evaluation.passed_filters:
-                return float(self._soft_infeasible_reward(evaluation))
-            return float(self._harmonic_reward(evaluation))
+            return float(self._terminal_reward_v2(evaluation))
 
         def _record_terminal_reason(self, reason: str) -> None:
             self.terminal_reason_counts[reason] = self.terminal_reason_counts.get(reason, 0) + 1
 
+        def _potential(self, mask: np.ndarray | None = None) -> float:
+            """Potential function Phi(s). Non-positive, with Phi=0 iff the mask
+            is inside the feasibility band, touches both supports and the
+            load, and has a single connected component.
+
+            Combined with shaping F = gamma * Phi(s') - Phi(s) this preserves
+            the optimal policy (Ng et al. 1999) while giving PPO a dense
+            gradient toward feasibility during an otherwise sparse-terminal
+            episode.
+            """
+            if not self.config.rl_potential_shaping:
+                return 0.0
+            if mask is None:
+                mask = self.mask
+            size = max(int(mask.size), 1)
+            vol = float(np.asarray(mask, dtype=np.float32).sum()) / float(size)
+            target = float(self.config.volume_target)
+            tol = float(self.config.effective_volume_tolerance)
+            vol_gap = max(abs(vol - target) - tol, 0.0)
+            support_gap = 0.0 if touches_region(mask, self.support_mask) else 1.0
+            load_gap = 0.0 if touches_region(mask, self.load_mask) else 1.0
+            islands_limit = max(6, int(mask.shape[0]) // 4)
+            islands = int(count_islands(mask))
+            island_gap = max(islands - 1, 0) / max(islands_limit, 1)
+            phi = -(
+                float(self.config.rl_shaping_w_volume) * vol_gap
+                + float(self.config.rl_shaping_w_contact) * (support_gap + load_gap)
+                + float(self.config.rl_shaping_w_islands) * island_gap
+            )
+            return float(self.config.rl_shaping_scale) * float(phi)
+
+        def _shaping(self, *, phi_before: float, terminal: bool) -> float:
+            """Potential-based shaping F = gamma * Phi(s') - Phi(s).
+
+            At a terminal transition we follow the standard convention
+            Phi(terminal) = 0, which keeps the policy-invariance property
+            intact for PPO with finite-horizon episodes.
+            """
+            if not self.config.rl_potential_shaping:
+                return 0.0
+            gamma = float(self.config.rl_shaping_gamma)
+            phi_next = 0.0 if terminal else self._potential()
+            return float(gamma * phi_next - float(phi_before))
+
         def _soft_infeasible_reward(self, evaluation: Any) -> float:
             resolution = int(self.mask.shape[0])
-            tolerance = max(float(self.config.volume_tolerance), 1e-6)
+            tolerance = max(float(self.config.effective_volume_tolerance), 1e-6)
             vol = float(evaluation.volume_fraction)
             target = float(self.config.volume_target)
             v_ratio = abs(vol - target) / tolerance
@@ -537,19 +603,27 @@ if gym is not None:  # pragma: no cover - optional dependency
             gap = min(1.0, v_gap + 0.5 * island_gap + support_gap + load_gap + empty_gap)
             return float(self.config.rl_infeasible_terminal_reward) * float(gap)
 
-        def _harmonic_reward(self, evaluation: Any) -> float:
-            compliance = max(float(evaluation.compliance), 1e-6)
-            volume_gap = abs(float(evaluation.volume_fraction) - self.config.volume_target)
-            smoothness_norm = float(evaluation.smoothness) / max(self.mask.size, 1)
-            islands_penalty = max(int(evaluation.islands) - 1, 0)
-            penalty = volume_gap + 0.05 * smoothness_norm + 0.10 * islands_penalty
-            clamp = float(self.config.rl_harmonic_clamp)
-            a1 = min(1.0 / compliance, clamp)
-            a2 = min(1.0 / (1.0 + penalty), clamp)
-            denom = a1 + a2
-            if denom <= 1e-12:
-                return 0.0
-            return float(2.0 * a1 * a2 / denom)
+        def _terminal_reward_v2(self, evaluation: Any) -> float:
+            """Terminal reward aligned with "minimize score at target volume".
+
+            Design rationale (fixes the harmonic-reward bug that rewarded the
+            agent for stopping with an inflated volume):
+              * Infeasible (out-of-band or missing contacts / too many islands):
+                delegated to ``_soft_infeasible_reward``, which already
+                normalises the penalty to ``[rl_infeasible_terminal_reward, 0]``
+                using ``effective_volume_tolerance``. With Phase 0's tight
+                band, any mask with inflated volume lands here.
+              * Feasible inside the tight band: monotone in ``evaluation.score``
+                with the bounded mapping ``baseline / (baseline + score)``.
+                Crucially, compliance is NOT in the reward until feasibility is
+                satisfied, which removes the previous "keep the extra material"
+                exploit of the harmonic-mean reward.
+            """
+            if not bool(getattr(evaluation, "passed_filters", False)):
+                return float(self._soft_infeasible_reward(evaluation))
+            baseline = max(float(self.config.rl_reward_baseline_score), 1e-6)
+            score = max(float(getattr(evaluation, "score", baseline)), 0.0)
+            return float(baseline / (baseline + score))
 
         def _intermediate_reward(self) -> float:
             volume_gap = abs(volume_fraction(self.mask) - self.config.volume_target)

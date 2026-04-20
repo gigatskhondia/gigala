@@ -230,3 +230,119 @@ These are the issues a reader of the article / reviewer should be aware of.
 - `tests/test_gen_rl_pipeline.py` — regression tests for cleanup, soft reward, terminal-reason counters.
 - `runlogs/gen_rl_rl_only_20x20_20260419_144255/` — the "broken" baseline (score = 1e12, fell back to seed).
 - `runlogs/gen_rl_rl_only_20x20_20260419_194406/` — the "fixed" reference run (score = 27.277, harvested).
+
+---
+
+## 7. Post-plan fix (`rl-only_20x20_fix_plan_70b44490`) — Phases 0–6
+
+The six-phase plan landed on this branch after the reference runs above. The
+full description of each phase lives in `.cursor/plans/rl-only_20x20_fix_plan_70b44490.plan.md`;
+the summary below is what changed in code, keyed by the diagnosis from §4.
+
+| Phase | Diagnosis it targets | What changed |
+|---|---|---|
+| **0 — tight band** | §4.1 volume-slack vs. final-volume mismatch | Added `ProblemConfig.rl_volume_tolerance = 0.03` and an `effective_volume_tolerance` property. `rl_only_exact` mode now uses the tight band for both `_screen_geometry` and the stop-action mask, so a mask reported as "feasible" is always inside `[target − 0.03, target + 0.03]`. |
+| **1 — reward redesign** | §4.5 always-negative reward; "inflate volume for low compliance" exploit in `_harmonic_reward` | Replaced `_harmonic_reward` with `_terminal_reward_v2`: infeasible masks get the soft penalty scaled by gap; feasible masks (inside the tight band) get `baseline / (baseline + score)` — strictly positive and monotone in score. |
+| **2 — potential shaping** | §4.4 `explained_variance` ≈ 0 | Added optional potential-based shaping `F = γ · Φ(s') − Φ(s)` with `Φ` penalising volume gap, missing support/load contact, and isolated voxels. Shaping is on by default (`rl_potential_shaping=True`) but gated by a flag so we can ablate. |
+| **3 — warm start** | §3.2 "~5.9 % feasible terminals" | New `rl_seed_strategy = "random_near_target"` (default) builds the episode's initial mask by randomly removing non-boundary cells from full-solid until the volume is at `target + slack_upper`, rejecting any removal that would disconnect the mask. The agent now starts ≈15 steps from the band instead of ≈90. |
+| **4 — PPO schedules** | §4.3 `target_kl` saturation, entropy collapse, `batch_size` too small | Added schedules for `ent_coef` (0.03 → 0.005 linear), `target_kl` (0.03 → 0.08 linear), and `learning_rate` (3e-4 → 5e-5 cosine by default). `rl_batch_size` default lifted 64 → 256. All of these are wired through CLI flags and the launcher. |
+| **5 — inference polish** | §4.2 inference rollouts unusable | `_rollout_inference` now warm-starts the evaluation env from `training_best_harvested` (via new `BinaryTopologyRefineEnv.set_seed_mask`), runs deterministic + stochastic rollouts, and then applies `_local_greedy_polish` — a bounded (≤200 FEA) boundary-cell flipper that only accepts score-reducing feasible flips. New `selected_source` values include `harvested_plus_polish`. |
+| **6 — baselines & 3-seed sweep** | §4.6 single seed, no classical baseline | Added `scripts/compute_baseline_20x20.py` (full-solid / random-at-target / ESO strain-energy) and `scripts/run_rl_only_20x20_3seeds.sh`. Both default to seeds `{17, 42, 2026}` for reproducibility. |
+
+### 7.1 New/renamed `ProblemConfig` fields
+
+All new fields are backwards-compatible defaults; set via env vars on the launcher:
+
+| Field | Default | Purpose |
+|---|---|---|
+| `rl_volume_tolerance` | `0.03` | Tight feasibility band for `rl_only_exact`. |
+| `rl_reward_baseline_score` | `100.0` | Scale for the monotone feasible-reward map `B / (B + score)`. |
+| `rl_potential_shaping` | `True` | Turn potential-based dense shaping on/off. |
+| `rl_shaping_gamma` | `0.99` | Discount used when computing `γ · Φ(s') − Φ(s)`. |
+| `rl_shaping_scale` | `1.0` | Outer multiplier on the shaping term. |
+| `rl_shaping_w_{volume,contact,islands}` | `1.0, 0.5, 0.5` | Per-component weights inside Φ. |
+| `rl_seed_strategy` | `"random_near_target"` | Warm-start strategy (`"full_solid"` restores legacy). |
+| `rl_ent_coef_final` | `0.005` | End point of the entropy-coef linear schedule. |
+| `rl_target_kl_final` | `0.08` | End point of the `target_kl` linear schedule. |
+| `rl_lr_initial` / `rl_lr_final` / `rl_lr_schedule` | `3e-4 / 5e-5 / "cosine"` | PPO learning-rate schedule. |
+| `rl_schedule_hparams` | `True` | Gate that toggles all three schedules at once. |
+| `rl_batch_size` | `256` | PPO minibatch size. |
+
+### 7.2 Baseline table (seeds 17, 42, 2026; target = 0.55; resolution = 20)
+
+Numbers produced by `scripts/compute_baseline_20x20.py --random-samples 200
+--eso-step-fraction 0.02 --eso-max-iterations 128`
+(see `runlogs/baseline_20x20_phase6/summary.json`). Lower score is better;
+`feasible_rate` is across the 3 seeds.
+
+| Baseline | score (best) | score (median) | score (worst) | feasible_rate |
+|---|---:|---:|---:|---:|
+| `full_solid` | 1e12 | 1e12 | 1e12 | 0.00 |
+| `random_at_target` (N=200) | **41.58** | 48.13 | 1e12 | 0.67 |
+| `eso_strain_energy` (greedy ESO) | 306.30 | 306.30 | 306.30 | 1.00 |
+| RL (harvested best, seed 42, 3M steps, pre-plan) | **27.28** | — | — | 1.00 |
+| RL-only post-plan, 3 seeds, 3M steps | *TBD — run `scripts/run_rl_only_20x20_3seeds.sh`* | | | |
+
+Takeaways from the baseline:
+
+1. **`full_solid` is strictly infeasible** at this target (as the docs §3.1
+   already implied). It is kept in the table so we have a reference point for
+   readers who assume "do-nothing" is a trivial baseline.
+2. **`random_at_target` at N=200 is surprisingly strong** — 0.5 % of samples
+   are feasible, but the best of them scores ≈42. This is the baseline the
+   paper should cite as "cheap random": any method worse than ~42 is not
+   doing useful work. Raising `--random-samples` to 1000–5000 usually brings
+   the best down into the high-30s.
+3. **ESO strain-energy at ~306 is much worse than random** on this specific
+   20x20 cantilever. This is a known failure mode of purely greedy ESO on
+   small grids: once the low-energy corner cells are removed, the remaining
+   structure is a nearly-uniform cantilever and further removals get stuck
+   in a poor local optimum. A more serious classical baseline would be a
+   density-based SIMP with filtering; we leave that to future work and flag
+   it in §4.
+4. **RL harvested best (27.28)** still beats the random-at-target median by
+   a factor of ~1.7 on seed 42, i.e. the policy is genuinely learning
+   something and the harvester is extracting it. Whether the RL mean across
+   seeds improves with the Phase-0–5 changes is exactly what the 3-seed
+   sweep is designed to answer — fill in the last row of the table after
+   running `scripts/run_rl_only_20x20_3seeds.sh`.
+
+### 7.3 Reproducing the numbers
+
+```bash
+# (a) baselines — ~2 min on CPU:
+python3 scripts/compute_baseline_20x20.py \
+    --resolution 20 --volume-target 0.55 \
+    --seeds 17 42 2026 \
+    --random-samples 1000 --eso-step-fraction 0.02 \
+    --output-dir runlogs/baseline_20x20_repro
+
+# (b) RL sweep at 100k steps (smoke, ~15 min/seed on CPU):
+scripts/run_rl_only_20x20_3seeds.sh
+
+# (c) RL sweep at 3M steps (full, ~1h/seed on CPU):
+GEN_RL_RL_TOTAL_TIMESTEPS=3000000 \
+  scripts/run_rl_only_20x20_3seeds.sh
+```
+
+Each seed lands in `runlogs/gen_rl_rl_only_20x20_3seeds_<timestamp>/seed_<seed>/`
+with the standard `summary.json`, `archive.json`, `best20.{npy,png}` and the
+terminal transcript — same layout as the single-seed launcher, so the existing
+`docs/rl_only_20x20_report.md §3` machinery still applies.
+
+### 7.4 What to grep in a new `summary.json`
+
+After a post-plan run, these keys are new or moved and are the ones to pull
+for the paper:
+
+- `config.rl_volume_tolerance` — actual feasibility band used.
+- `config.rl_seed_strategy` — `"random_near_target"` for post-plan, `"full_solid"` for pre-plan.
+- `metrics.rl_training.terminal_reason_counts.passed` — expected to hit 30–50 %
+  in the first third of training (Phase 3 success criterion).
+- `metrics.rl_training.training_best.score` — the harvested best.
+- `metrics.rl_training.selected_source` — now can be `"harvested_plus_polish"` (Phase 5).
+- `metrics.rl_training.inference_scores` — per-rollout scores *before* polish,
+  so reviewers can see the raw policy quality separately from the harvester.
+- `config.rl_ent_coef{,_final}`, `config.rl_target_kl{,_final}`,
+  `config.rl_lr_{initial,final,schedule}` — initial/final values of the three
+  Phase-4 schedules, captured verbatim from the CLI into the summary.

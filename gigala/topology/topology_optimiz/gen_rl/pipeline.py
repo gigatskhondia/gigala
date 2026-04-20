@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import math
 import os
 import time
 from dataclasses import dataclass, field
@@ -11,7 +12,12 @@ import numpy as np
 from .coarse_search import SearchCandidate, boundary_local_search, run_coarse_search
 from .direct_search import DirectSearchArtifacts, run_direct_search_core
 from .fem import EvalResult, Evaluator, ProblemConfig, evaluation_snapshot
-from .representation import infer_stage_resolutions, upsample_binary_mask
+from .metrics import count_islands, retain_components_touching_region
+from .representation import (
+    boundary_patch_coordinates,
+    infer_stage_resolutions,
+    upsample_binary_mask,
+)
 
 
 @dataclass
@@ -287,6 +293,18 @@ def _maybe_run_rl(
             self.harvested_candidates = 0
             self.harvested_feasible = 0
 
+        def _on_rollout_start(self) -> None:
+            if not bool(config.rl_schedule_hparams):
+                return
+            try:
+                ent_coef, target_kl = _schedule_hparams_for_step(
+                    config, int(self.num_timesteps)
+                )
+                self.model.ent_coef = ent_coef
+                self.model.target_kl = target_kl
+            except Exception:
+                pass
+
         def _on_step(self) -> bool:
             current = int(self.num_timesteps)
             try:
@@ -378,16 +396,30 @@ def _maybe_run_rl(
                 )
 
     callback = _RLTrainingCallback()
-    model = MaskablePPO(
-        "CnnPolicy",
-        training_env,
+    lr_spec = _build_lr_schedule(config)
+    ppo_kwargs: dict[str, Any] = dict(
         policy_kwargs=default_policy_kwargs(config.rl_policy_size),
         verbose=1 if progress else 0,
         seed=config.random_seed,
         device=device,
         ent_coef=float(config.rl_ent_coef),
         target_kl=float(config.rl_target_kl) if config.rl_target_kl > 0.0 else None,
+        batch_size=int(config.rl_batch_size),
+        learning_rate=lr_spec,
     )
+    model = MaskablePPO(
+        "CnnPolicy",
+        training_env,
+        **ppo_kwargs,
+    )
+    if progress:
+        progress(
+            f"PPO: batch_size={int(config.rl_batch_size)}, "
+            f"lr_schedule={config.rl_lr_schedule} ({config.rl_lr_initial:.2e}->{config.rl_lr_final:.2e}), "
+            f"ent_coef schedule={float(config.rl_ent_coef):.4f}->{float(config.rl_ent_coef_final):.4f}, "
+            f"target_kl schedule={float(config.rl_target_kl):.4f}->{float(config.rl_target_kl_final):.4f}, "
+            f"schedules_enabled={bool(config.rl_schedule_hparams)}"
+        )
     try:
         model.learn(total_timesteps=config.rl_total_timesteps, callback=callback)
     finally:
@@ -413,20 +445,17 @@ def _maybe_run_rl(
             f"(rollouts={config.rl_inference_rollouts})."
         )
 
-    selected_mask, selected_source = _rollout_inference(
+    selected_mask, selected_source, inference_scores = _rollout_inference(
         model,
         single_monitor,
         evaluator,
         config,
+        harvested_best_mask=callback.best_global_mask,
+        harvested_best_eval=callback.best_global_eval,
         progress=progress,
     )
+    diagnostics["inference_scores"] = inference_scores
     selected_eval = evaluator.evaluate(selected_mask, "full64")
-    if callback.best_global_mask is not None and callback.best_global_eval is not None:
-        if _is_better_result(callback.best_global_eval, selected_eval):
-            selected_mask = callback.best_global_mask
-            selected_eval = callback.best_global_eval
-            selected_source = "training_best_harvested"
-            diagnostics["training_best_source"] = "harvested"
     if hasattr(single_base, "best_result"):
         best_mask, best_eval = single_base.best_result()
         if best_eval is not None and _is_better_result(best_eval, selected_eval):
@@ -443,19 +472,123 @@ def _maybe_run_rl(
     return selected_mask, diagnostics
 
 
+def _local_greedy_polish(
+    mask: np.ndarray,
+    evaluator: Evaluator,
+    config: ProblemConfig,
+    *,
+    max_fea_budget: int = 200,
+    progress: ProgressFn | None = None,
+) -> tuple[np.ndarray, EvalResult, int]:
+    """Greedy 1-cell boundary flip polish used after the RL harvester.
+
+    Iterates boundary voxel flips (add or remove) and accepts any flip that
+    (a) leaves the mask inside the feasibility band (``passed_filters=True``)
+    and (b) strictly reduces ``evaluation.score``. Supports, load and
+    connectivity are enforced via the evaluator's ``_screen_geometry`` pass.
+
+    The per-polish FEA budget is capped at ``max_fea_budget`` so the
+    procedure always terminates within the configured full64 evaluation
+    budget.
+    """
+    current = np.ascontiguousarray(mask, dtype=np.uint8).copy()
+    current_eval = evaluator.evaluate(current, "full64")
+    fea_used = 0
+    if not bool(getattr(current_eval, "passed_filters", False)):
+        return current, current_eval, fea_used
+    width = max(1, int(config.frontier_width))
+    pass_index = 0
+    while fea_used < max_fea_budget:
+        improved = False
+        coords = boundary_patch_coordinates(current, patch_size=1, width=width)
+        for row, col in coords:
+            if fea_used >= max_fea_budget:
+                break
+            candidate = current.copy()
+            candidate[row, col] = 0 if candidate[row, col] else 1
+            # Protect supports/load (same invariants as the env and evaluator).
+            candidate[0, 0] = 1
+            candidate[0, -1] = 1
+            candidate[-1, -1] = 1
+            cand_eval = evaluator.evaluate(candidate, "full64")
+            fea_used += 1
+            if not bool(getattr(cand_eval, "passed_filters", False)):
+                continue
+            if float(cand_eval.score) + 1e-9 < float(current_eval.score):
+                current = candidate
+                current_eval = cand_eval
+                improved = True
+                break
+        pass_index += 1
+        if not improved:
+            break
+    if progress:
+        progress(
+            f"polish done: passes={pass_index}, fea_used={fea_used}/{max_fea_budget}, "
+            f"final_score={float(current_eval.score):.4f}, "
+            f"volume={float(current_eval.volume_fraction):.3f}"
+        )
+    return current, current_eval, fea_used
+
+
 def _rollout_inference(
     model: Any,
     monitor_env: Any,
     evaluator: Evaluator,
     config: ProblemConfig,
     *,
+    harvested_best_mask: np.ndarray | None = None,
+    harvested_best_eval: EvalResult | None = None,
     progress: ProgressFn | None = None,
-) -> tuple[np.ndarray, str]:
+) -> tuple[np.ndarray, str, dict[str, Any]]:
+    """Phase-5 inference protocol.
+
+    1. If the training callback harvested a feasible ``best_global_mask``,
+       use it as the env seed so that every rollout refines from the best
+       known design (instead of drifting away from a full-solid warm start).
+    2. Run one deterministic rollout + (N-1) stochastic rollouts from that
+       seed.
+    3. Local greedy polish with a 1-cell boundary flip loop (<=200 FEA) on
+       the best mask observed across the harvester + rollouts.
+
+    Returns ``(final_mask, selected_source, diagnostics_scores)`` with
+    ``selected_source in {harvested_best, harvested_plus_policy,
+    harvested_plus_polish, deterministic_rollout, stochastic_rollout_N}``
+    so summaries can show where improvements came from.
+    """
     base_env = monitor_env.unwrapped
     total_rollouts = max(1, int(config.rl_inference_rollouts))
+    diagnostics: dict[str, Any] = {}
+
+    if harvested_best_mask is not None and hasattr(base_env, "set_seed_mask"):
+        try:
+            base_env.set_seed_mask(np.ascontiguousarray(harvested_best_mask, dtype=np.uint8))
+            diagnostics["inference_seed_source"] = "harvested_best"
+            if progress:
+                progress(
+                    "inference seed set to harvested_best "
+                    f"(volume={float(harvested_best_eval.volume_fraction):.3f}, "
+                    f"score={float(harvested_best_eval.score):.4f})"
+                    if harvested_best_eval is not None
+                    else "inference seed set to harvested_best"
+                )
+        except Exception as exc:
+            if progress:
+                progress(f"failed to set harvested seed for inference ({exc}); using training seed.")
+            diagnostics["inference_seed_source"] = "training_seed"
+    else:
+        diagnostics["inference_seed_source"] = "training_seed"
+
     best_mask: np.ndarray | None = None
     best_eval: EvalResult | None = None
     best_source = "deterministic_rollout"
+
+    if harvested_best_mask is not None and harvested_best_eval is not None:
+        best_mask = np.ascontiguousarray(harvested_best_mask, dtype=np.uint8).copy()
+        best_eval = harvested_best_eval
+        best_source = "harvested_best"
+        diagnostics["harvested_best_score"] = float(harvested_best_eval.score)
+
     for rollout_idx in range(total_rollouts):
         deterministic = rollout_idx == 0
         observation, _ = monitor_env.reset()
@@ -471,19 +604,49 @@ def _rollout_inference(
             done = bool(terminated or truncated)
         rollout_mask = base_env.render()
         rollout_eval = evaluator.evaluate(rollout_mask, "full64")
-        source = "deterministic_rollout" if deterministic else f"stochastic_rollout_{rollout_idx}"
+        source_label = (
+            "deterministic_rollout" if deterministic else f"stochastic_rollout_{rollout_idx}"
+        )
         if progress:
             progress(
-                f"inference rollout {rollout_idx + 1}/{total_rollouts} ({source}): "
+                f"inference rollout {rollout_idx + 1}/{total_rollouts} ({source_label}): "
                 f"score={rollout_eval.score:.4f}, passed_filters={rollout_eval.passed_filters}, "
                 f"volume={rollout_eval.volume_fraction:.3f}"
             )
         if best_eval is None or _is_better_result(rollout_eval, best_eval):
             best_mask = rollout_mask.copy()
             best_eval = rollout_eval
-            best_source = source
-    assert best_mask is not None
-    return best_mask, best_source
+            best_source = (
+                "harvested_plus_policy" if harvested_best_mask is not None else source_label
+            )
+
+    assert best_mask is not None and best_eval is not None
+    diagnostics["post_rollout_best_score"] = float(best_eval.score)
+    diagnostics["post_rollout_source"] = best_source
+
+    # Local greedy polish over boundary flips, capped to keep within the
+    # full64 evaluation budget.
+    polish_budget = min(200, max(0, int(config.max_rl_full_evals) - int(evaluator.fea_counts["full64"])))
+    if polish_budget > 0 and bool(getattr(best_eval, "passed_filters", False)):
+        polished_mask, polished_eval, fea_used = _local_greedy_polish(
+            best_mask,
+            evaluator,
+            config,
+            max_fea_budget=polish_budget,
+            progress=progress,
+        )
+        diagnostics["polish_fea_used"] = int(fea_used)
+        diagnostics["polish_score"] = float(polished_eval.score)
+        if _is_better_result(polished_eval, best_eval):
+            best_mask = polished_mask
+            best_eval = polished_eval
+            best_source = "harvested_plus_polish"
+    else:
+        diagnostics["polish_fea_used"] = 0
+
+    diagnostics["selected_source"] = best_source
+    diagnostics["selected_score"] = float(best_eval.score)
+    return best_mask, best_source, diagnostics
 
 
 def _maybe_run_direct_rl(
@@ -879,6 +1042,105 @@ def run_direct64_exact_search(config: ProblemConfig, *, progress: ProgressFn | N
     return artifacts
 
 
+def _build_lr_schedule(config: ProblemConfig) -> Any:
+    """Return a learning-rate spec suitable for MaskablePPO(..., learning_rate=...).
+
+    Cosine schedule: lr(p_remaining=1) = rl_lr_initial,
+                     lr(p_remaining=0) = rl_lr_final,
+                     monotone cosine interpolation in between.
+
+    MaskablePPO calls ``learning_rate(progress_remaining)`` where
+    ``progress_remaining`` goes from 1.0 at start to 0.0 at the end of training,
+    so we translate that to the usual 0..1 progress coordinate.
+    """
+    lr_initial = float(config.rl_lr_initial)
+    lr_final = float(config.rl_lr_final)
+    if config.rl_lr_schedule == "constant" or abs(lr_initial - lr_final) < 1e-12:
+        return lr_initial
+
+    def _cosine(progress_remaining: float) -> float:
+        progress_remaining = float(max(0.0, min(1.0, progress_remaining)))
+        progress = 1.0 - progress_remaining
+        return lr_final + 0.5 * (lr_initial - lr_final) * (1.0 + math.cos(math.pi * progress))
+
+    return _cosine
+
+
+def _schedule_hparams_for_step(config: ProblemConfig, num_timesteps: int) -> tuple[float, float | None]:
+    """Linear schedule for ent_coef and target_kl from rollout 0 to the last
+    rollout. Returns the (ent_coef, target_kl) pair that PPO should use for
+    the upcoming rollout; ``target_kl`` may be ``None`` to disable the
+    early-stopping check."""
+    total = max(1, int(config.rl_total_timesteps))
+    progress = float(max(0.0, min(1.0, float(num_timesteps) / float(total))))
+    ent_i = float(config.rl_ent_coef)
+    ent_f = float(config.rl_ent_coef_final)
+    ent_coef = ent_f + (ent_i - ent_f) * (1.0 - progress)
+    kl_i = float(config.rl_target_kl)
+    kl_f = float(config.rl_target_kl_final)
+    if kl_i <= 0.0 and kl_f <= 0.0:
+        target_kl: float | None = None
+    else:
+        target_kl = max(kl_f + (kl_i - kl_f) * (1.0 - progress), 1e-6)
+    return float(ent_coef), target_kl
+
+
+def _seed_full_solid(config: ProblemConfig) -> np.ndarray:
+    return np.ones((int(config.resolution), int(config.resolution)), dtype=np.uint8)
+
+
+def _seed_random_near_target(config: ProblemConfig, evaluator: Evaluator) -> np.ndarray:
+    """Build a warm-start mask with volume close to the upper band and
+    guaranteed support/load contact plus single connected component.
+
+    Strategy: start from full-solid and iteratively remove random non-boundary
+    cells, skipping any removal that would disconnect the mask. This produces
+    a random topology whose volume sits near ``target + slack_upper`` after
+    ``target_cells`` successful removals (so the agent does not have to spend
+    ~N/2 initial steps just reaching the band).
+    """
+    res = int(config.resolution)
+    setup = evaluator.setups[res]
+    support_load = np.clip(np.asarray(setup.support_mask) + np.asarray(setup.load_mask), 0, 1).astype(np.uint8)
+    target_vol = float(np.clip(
+        float(config.volume_target) + float(config.rl_volume_slack_upper),
+        float(config.volume_target),
+        1.0,
+    ))
+    target_cells = int(round(target_vol * res * res))
+
+    mask = np.ones((res, res), dtype=np.uint8)
+    immutable = support_load.astype(bool)
+    rng = np.random.default_rng(int(config.random_seed))
+    removable = [
+        (r, c)
+        for r in range(res)
+        for c in range(res)
+        if not immutable[r, c]
+    ]
+    rng.shuffle(removable)
+    for r, c in removable:
+        if int(mask.sum()) <= target_cells:
+            break
+        mask[r, c] = 0
+        retained = retain_components_touching_region(mask, support_load)
+        # Require the mask to remain a single connected component that still
+        # covers every support/load cell. Otherwise PPO would need extra steps
+        # to bridge disconnected chunks before becoming feasible.
+        if int(retained.sum()) < int(mask.sum()) or int(count_islands(retained)) > 1:
+            mask[r, c] = 1
+        else:
+            mask = retained
+    return np.ascontiguousarray(mask, dtype=np.uint8)
+
+
+def _build_rl_seed(config: ProblemConfig, evaluator: Evaluator) -> tuple[np.ndarray, str]:
+    strategy = getattr(config, "rl_seed_strategy", "full_solid")
+    if strategy == "random_near_target":
+        return _seed_random_near_target(config, evaluator), "random_near_target"
+    return _seed_full_solid(config), "full_solid"
+
+
 def run_rl_only_exact_search(config: ProblemConfig, *, progress: ProgressFn | None = None) -> DirectSearchArtifacts:
     rl_only_config = dataclasses.replace(
         config,
@@ -888,12 +1150,12 @@ def run_rl_only_exact_search(config: ProblemConfig, *, progress: ProgressFn | No
     start = time.time()
     evaluator = Evaluator(rl_only_config)
     warnings: list[str] = []
-    seed_mask = np.ones((rl_only_config.resolution, rl_only_config.resolution), dtype=np.uint8)
+    seed_mask, seed_type = _build_rl_seed(rl_only_config, evaluator)
     seed_eval = evaluator.evaluate(seed_mask, "full64")
     search_trace: list[dict[str, Any]] = [
         {
             "event": "rl_only_seed",
-            "seed_type": "full_solid",
+            "seed_type": seed_type,
             "score": float(seed_eval.score),
             "volume": float(seed_eval.volume_fraction),
             "passed_filters": bool(seed_eval.passed_filters),

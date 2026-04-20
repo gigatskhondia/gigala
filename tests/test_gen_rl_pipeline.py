@@ -856,7 +856,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(env.stage_full_eval_calls, 0)
         self.assertEqual(env.full_eval_calls, 0)
 
-    def test_sparse_reward_terminal_harmonic_positive_on_feasible(self) -> None:
+    def test_sparse_reward_terminal_reward_positive_on_feasible(self) -> None:
         if gym is None:
             self.skipTest("gymnasium is unavailable")
         config = ProblemConfig(
@@ -915,6 +915,7 @@ class PipelineTests(unittest.TestCase):
             rl_volume_slack_upper=0.5,
             rl_skip_threshold=0.0,
             rl_infeasible_terminal_reward=-0.75,
+            rl_potential_shaping=False,
         )
         seed = np.ones((8, 8), dtype=np.uint8)
         env = make_refine_env(seed, config)
@@ -947,6 +948,7 @@ class PipelineTests(unittest.TestCase):
         self.assertAlmostEqual(reward, config.rl_infeasible_terminal_reward, places=6)
 
     def test_sparse_reward_intermediate_steps_return_zero(self) -> None:
+        """Without potential shaping the intermediate sparse step must return 0."""
         if gym is None:
             self.skipTest("gymnasium is unavailable")
         config = ProblemConfig(
@@ -961,6 +963,7 @@ class PipelineTests(unittest.TestCase):
             rl_volume_slack_lower=0.5,
             rl_volume_slack_upper=0.5,
             rl_skip_threshold=0.0,
+            rl_potential_shaping=False,
         )
         seed = np.ones((8, 8), dtype=np.uint8)
         env = make_refine_env(seed, config)
@@ -972,6 +975,42 @@ class PipelineTests(unittest.TestCase):
         self.assertFalse(terminated)
         self.assertEqual(reward, 0.0)
         self.assertNotIn("evaluation", info)
+
+    def test_sparse_reward_intermediate_step_shaped_toward_band(self) -> None:
+        """Phase 2: with potential shaping, removing material from a full-solid
+        mask (vol=1.0) moves the potential closer to the band -- Phi(next)
+        must be >= Phi(prev), and the shaping contribution F = gamma*Phi' - Phi
+        must be strictly positive on such a step."""
+        if gym is None:
+            self.skipTest("gymnasium is unavailable")
+        config = ProblemConfig(
+            resolution=8,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            max_full_evals=32,
+            max_rl_full_evals=32,
+            max_episode_steps=16,
+            rl_sparse_reward=True,
+            volume_target=0.5,
+            rl_volume_slack_lower=0.5,
+            rl_volume_slack_upper=0.5,
+            rl_skip_threshold=0.0,
+            rl_potential_shaping=True,
+            rl_shaping_gamma=0.99,
+        )
+        seed = np.ones((8, 8), dtype=np.uint8)
+        env = make_refine_env(seed, config)
+        env.reset()
+        phi_before = env._potential()
+        action_mask = env.action_masks()
+        non_stop_indices = np.flatnonzero(action_mask[:-1])
+        action = int(non_stop_indices[0])
+        _obs, reward, terminated, _truncated, info = env.step(action)
+        phi_after = env._potential()
+        self.assertFalse(terminated)
+        self.assertGreaterEqual(phi_after, phi_before)  # closer to band
+        self.assertGreater(reward, 0.0)  # shaping is positive
+        self.assertIn("shaping_step", info)
 
     def test_terminal_cleanup_removes_disconnected_cells(self) -> None:
         if gym is None:
@@ -1039,6 +1078,7 @@ class PipelineTests(unittest.TestCase):
             rl_sparse_reward=True,
             volume_target=0.5,
             volume_tolerance=0.1,
+            rl_volume_tolerance=0.03,
             rl_infeasible_terminal_reward=-0.8,
         )
         seed = np.ones((8, 8), dtype=np.uint8)
@@ -1049,7 +1089,7 @@ class PipelineTests(unittest.TestCase):
             resolution=8,
             compliance=1e12,
             score=1e12,
-            volume_fraction=0.615,
+            volume_fraction=0.54,
             smoothness=0,
             islands=1,
             fea_performed=False,
@@ -1143,6 +1183,433 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(drained.get("passed", 0), 1)
         self.assertEqual(drained.get("too_many_islands", 0), 2)
         self.assertEqual(env.drain_terminal_reason_counts(), {})
+
+    def test_effective_volume_tolerance_tight_for_rl_only(self) -> None:
+        """Phase 0: rl_only_exact must use the tight rl_volume_tolerance band,
+        independently of the legacy wide ``volume_tolerance`` used by GA modes.
+        """
+        from gigala.topology.topology_optimiz.gen_rl.fem import Evaluator
+
+        rl_config = ProblemConfig(
+            resolution=8,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            volume_target=0.55,
+            volume_tolerance=0.20,
+            rl_volume_tolerance=0.03,
+            max_full_evals=4,
+            max_rl_full_evals=4,
+        )
+        legacy_config = ProblemConfig(
+            resolution=8,
+            pipeline_mode="multistage",
+            enable_rl=False,
+            volume_target=0.55,
+            volume_tolerance=0.20,
+            rl_volume_tolerance=0.03,
+            max_full_evals=4,
+            max_rl_full_evals=4,
+        )
+        self.assertAlmostEqual(rl_config.effective_volume_tolerance, 0.03, places=6)
+        self.assertAlmostEqual(legacy_config.effective_volume_tolerance, 0.20, places=6)
+
+        # vol=0.69 with target=0.55: outside the RL band (0.14 > 0.03) but
+        # inside the legacy band (0.14 < 0.20).
+        mask = np.zeros((8, 8), dtype=np.uint8)
+        mask[:, :6] = 1  # 48/64 = 0.75 -> still outside both;  use 0.6875 instead
+        mask = np.zeros((8, 8), dtype=np.uint8)
+        mask.flat[:44] = 1  # volume = 44/64 = 0.6875 ~ 0.69
+        mask[0, 0] = 1  # support
+        mask[0, -1] = 1  # support
+        mask[-1, -1] = 1  # load
+
+        rl_eval = Evaluator(rl_config).evaluate(mask, "full64")
+        legacy_eval = Evaluator(legacy_config).evaluate(mask, "full64")
+        self.assertFalse(rl_eval.passed_filters)
+        self.assertEqual(rl_eval.invalid_reason, "volume_out_of_range")
+        # Legacy band is wide (0.20), so the same mask may be feasible there
+        # (the mask is well-connected and has support+load contact by
+        # construction). We only assert the tight band rejects it.
+
+    def test_terminal_reward_feasible_is_monotone_in_score(self) -> None:
+        """Phase 1: inside the feasibility band, lower score must yield
+        strictly higher reward (previously harmonic mean could prefer
+        higher-volume masks)."""
+        if gym is None:
+            self.skipTest("gymnasium is unavailable")
+        config = ProblemConfig(
+            resolution=8,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            max_full_evals=32,
+            max_rl_full_evals=32,
+            max_episode_steps=8,
+            rl_sparse_reward=True,
+            volume_target=0.5,
+            rl_volume_tolerance=0.03,
+            rl_reward_baseline_score=100.0,
+        )
+        seed = np.zeros((8, 8), dtype=np.uint8)
+        seed.flat[: 8 * 8 // 2] = 1
+        env = make_refine_env(seed, config)
+        env.reset()
+
+        def _feasible(score: float) -> EvalResult:
+            return EvalResult(
+                fidelity="full64",
+                resolution=8,
+                compliance=score,
+                score=score,
+                volume_fraction=0.5,
+                smoothness=4,
+                islands=1,
+                fea_performed=True,
+                cache_hit=False,
+                passed_filters=True,
+            )
+
+        r_low = env._terminal_reward_v2(_feasible(score=20.0))
+        r_mid = env._terminal_reward_v2(_feasible(score=30.0))
+        r_hi = env._terminal_reward_v2(_feasible(score=50.0))
+        self.assertGreater(r_low, r_mid)
+        self.assertGreater(r_mid, r_hi)
+        # All positive and bounded in (0, 1] by construction.
+        for r in (r_low, r_mid, r_hi):
+            self.assertGreater(r, 0.0)
+            self.assertLessEqual(r, 1.0)
+
+    def test_terminal_reward_ignores_compliance_when_out_of_band(self) -> None:
+        """Phase 1: once the mask is out of the tight band, the reward must
+        NOT be improved by a low compliance/score. Otherwise PPO can still
+        exploit the 'stop with extra material' strategy."""
+        if gym is None:
+            self.skipTest("gymnasium is unavailable")
+        config = ProblemConfig(
+            resolution=8,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            max_full_evals=32,
+            max_rl_full_evals=32,
+            max_episode_steps=8,
+            rl_sparse_reward=True,
+            volume_target=0.5,
+            rl_volume_tolerance=0.03,
+            rl_infeasible_terminal_reward=-1.0,
+            rl_reward_baseline_score=100.0,
+        )
+        seed = np.ones((8, 8), dtype=np.uint8)
+        env = make_refine_env(seed, config)
+        env.reset()
+
+        out_of_band_low_compliance = EvalResult(
+            fidelity="full64",
+            resolution=8,
+            compliance=5.0,  # pretend the solver found a very stiff mask
+            score=5.0,
+            volume_fraction=0.69,
+            smoothness=4,
+            islands=1,
+            fea_performed=True,
+            cache_hit=False,
+            passed_filters=False,
+            invalid_reason="volume_out_of_range",
+        )
+        in_band_higher_compliance = EvalResult(
+            fidelity="full64",
+            resolution=8,
+            compliance=27.0,
+            score=27.0,
+            volume_fraction=0.50,
+            smoothness=4,
+            islands=1,
+            fea_performed=True,
+            cache_hit=False,
+            passed_filters=True,
+        )
+        r_out = env._terminal_reward_v2(out_of_band_low_compliance)
+        r_in = env._terminal_reward_v2(in_band_higher_compliance)
+        self.assertLess(r_out, 0.0)
+        self.assertGreater(r_in, 0.0)
+        self.assertLess(r_out, r_in)  # the feasible in-band mask always wins.
+
+    def test_potential_shaping_zero_inside_band(self) -> None:
+        """Phase 2: Phi(s) must be 0 for a feasible in-band mask with contact
+        to supports/load and a single connected component."""
+        if gym is None:
+            self.skipTest("gymnasium is unavailable")
+        config = ProblemConfig(
+            resolution=8,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            max_full_evals=4,
+            max_rl_full_evals=4,
+            rl_sparse_reward=True,
+            volume_target=0.5,
+            rl_volume_tolerance=0.03,
+            rl_potential_shaping=True,
+        )
+        # Single connected block that spans both supports (row 0) and the load
+        # cell (7, 7). vol = 32/64 = 0.5 == target.
+        mask = np.zeros((8, 8), dtype=np.uint8)
+        mask[:4, :] = 1  # top half -> touches both supports at (0,0) and (0,7)
+        # Connect the load at (7,7) to the top block via a vertical strip.
+        # That adds cells, so shrink the top block to preserve volume=0.5.
+        mask = np.zeros((8, 8), dtype=np.uint8)
+        mask[0, :] = 1  # supports on row 0, 8 cells
+        mask[1:, -1] = 1  # strip down the right column -> 7 cells, reaches load at (7,7)
+        # Fill remaining cells up to 32 so volume stays at 0.5.
+        filled = int(mask.sum())  # 15
+        remaining = 32 - filled  # 17
+        # Add rows starting from row 1 moving down-left, staying connected via right column.
+        i = 0
+        for row in range(1, 8):
+            for col in range(0, 7):
+                if remaining <= 0:
+                    break
+                # Only add cells adjacent to already-solid ones to keep the mask connected.
+                if mask[row, col + 1] or (row > 0 and mask[row - 1, col]):
+                    mask[row, col] = 1
+                    remaining -= 1
+                    i += 1
+            if remaining <= 0:
+                break
+        self.assertEqual(int(mask.sum()), 32)
+        env = make_refine_env(mask, config)
+        env.reset()
+        self.assertAlmostEqual(env._potential(), 0.0, places=6)
+
+    def test_potential_shaping_negative_when_out_of_band(self) -> None:
+        """Phase 2: Phi(s) must be strictly negative for an out-of-band mask."""
+        if gym is None:
+            self.skipTest("gymnasium is unavailable")
+        config = ProblemConfig(
+            resolution=8,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            max_full_evals=4,
+            max_rl_full_evals=4,
+            rl_sparse_reward=True,
+            volume_target=0.5,
+            rl_volume_tolerance=0.03,
+            rl_potential_shaping=True,
+        )
+        mask = np.ones((8, 8), dtype=np.uint8)  # vol = 1.0
+        env = make_refine_env(mask, config)
+        env.reset()
+        phi_full = env._potential()
+        self.assertLess(phi_full, 0.0)
+
+        env.mask = np.zeros((8, 8), dtype=np.uint8)  # vol = 0
+        phi_empty = env._potential()
+        self.assertLess(phi_empty, phi_full)  # further from the band -> more negative
+
+    def test_shaping_disabled_by_flag(self) -> None:
+        """Phase 2: flag ``rl_potential_shaping=False`` disables dense shaping
+        entirely, preserving legacy sparse behaviour."""
+        if gym is None:
+            self.skipTest("gymnasium is unavailable")
+        config = ProblemConfig(
+            resolution=8,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            max_full_evals=4,
+            max_rl_full_evals=4,
+            rl_sparse_reward=True,
+            volume_target=0.5,
+            rl_volume_tolerance=0.03,
+            rl_potential_shaping=False,
+        )
+        mask = np.ones((8, 8), dtype=np.uint8)
+        env = make_refine_env(mask, config)
+        env.reset()
+        self.assertEqual(env._potential(), 0.0)
+        self.assertEqual(env._shaping(phi_before=-10.0, terminal=False), 0.0)
+        self.assertEqual(env._shaping(phi_before=-10.0, terminal=True), 0.0)
+
+    def test_seed_random_near_target_hits_upper_band(self) -> None:
+        """Phase 3: random_near_target seed should land near target+slack_upper
+        (so the agent does not need to spend half the episode just reaching
+        the feasibility band) and must be a single connected component."""
+        from gigala.topology.topology_optimiz.gen_rl.fem import Evaluator
+        from gigala.topology.topology_optimiz.gen_rl.metrics import count_islands
+        from gigala.topology.topology_optimiz.gen_rl.pipeline import (
+            _seed_random_near_target,
+        )
+
+        config = ProblemConfig(
+            resolution=20,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            volume_target=0.55,
+            rl_volume_slack_upper=0.05,
+            rl_volume_tolerance=0.03,
+            rl_seed_strategy="random_near_target",
+            max_full_evals=4,
+            max_rl_full_evals=4,
+            random_seed=42,
+        )
+        evaluator = Evaluator(config)
+        seed = _seed_random_near_target(config, evaluator)
+        self.assertEqual(seed.shape, (20, 20))
+        # Volume within a couple of cells of the upper band limit
+        vol = float(seed.sum()) / float(seed.size)
+        self.assertLessEqual(vol, 0.61)
+        self.assertGreaterEqual(vol, 0.58)
+        # Single connected component after the retention pass
+        self.assertEqual(count_islands(seed), 1)
+        # Supports and load preserved
+        self.assertEqual(int(seed[0, 0]), 1)
+        self.assertEqual(int(seed[0, -1]), 1)
+        self.assertEqual(int(seed[-1, -1]), 1)
+
+    def test_lr_schedule_interpolates_cosine(self) -> None:
+        """Phase 4: cosine schedule hits initial at progress_remaining=1 and
+        final at progress_remaining=0, monotone in between."""
+        from gigala.topology.topology_optimiz.gen_rl.pipeline import _build_lr_schedule
+
+        config = ProblemConfig(
+            resolution=20,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            rl_lr_initial=3e-4,
+            rl_lr_final=5e-5,
+            rl_lr_schedule="cosine",
+            max_full_evals=4,
+            max_rl_full_evals=4,
+        )
+        schedule = _build_lr_schedule(config)
+        self.assertAlmostEqual(schedule(1.0), 3e-4, places=8)
+        self.assertAlmostEqual(schedule(0.0), 5e-5, places=8)
+        mid = schedule(0.5)
+        self.assertGreater(mid, 5e-5)
+        self.assertLess(mid, 3e-4)
+
+    def test_lr_schedule_constant_returns_scalar(self) -> None:
+        from gigala.topology.topology_optimiz.gen_rl.pipeline import _build_lr_schedule
+
+        config = ProblemConfig(
+            resolution=20,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            rl_lr_schedule="constant",
+            rl_lr_initial=2.5e-4,
+            rl_lr_final=2.5e-4,
+            max_full_evals=4,
+            max_rl_full_evals=4,
+        )
+        schedule = _build_lr_schedule(config)
+        self.assertAlmostEqual(float(schedule), 2.5e-4, places=8)
+
+    def test_schedule_hparams_linear_interpolation(self) -> None:
+        """Phase 4: ent_coef and target_kl must linearly interpolate from
+        their initial to final values as training progresses."""
+        from gigala.topology.topology_optimiz.gen_rl.pipeline import (
+            _schedule_hparams_for_step,
+        )
+
+        config = ProblemConfig(
+            resolution=20,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            rl_ent_coef=0.03,
+            rl_ent_coef_final=0.005,
+            rl_target_kl=0.03,
+            rl_target_kl_final=0.08,
+            rl_total_timesteps=100_000,
+            max_full_evals=4,
+            max_rl_full_evals=4,
+        )
+        start_ent, start_kl = _schedule_hparams_for_step(config, 0)
+        mid_ent, mid_kl = _schedule_hparams_for_step(config, 50_000)
+        end_ent, end_kl = _schedule_hparams_for_step(config, 100_000)
+        self.assertAlmostEqual(start_ent, 0.03, places=6)
+        self.assertAlmostEqual(end_ent, 0.005, places=6)
+        self.assertAlmostEqual(mid_ent, (0.03 + 0.005) / 2, places=6)
+        self.assertAlmostEqual(start_kl, 0.03, places=6)
+        self.assertAlmostEqual(end_kl, 0.08, places=6)
+        self.assertAlmostEqual(mid_kl, (0.03 + 0.08) / 2, places=6)
+
+    def test_set_seed_mask_updates_env_seed(self) -> None:
+        """Phase 5: ``set_seed_mask`` must replace the warm-start mask so that
+        subsequent ``reset`` calls start from the new design (enabling
+        inference rollouts from the harvested best)."""
+        if gym is None:
+            self.skipTest("gymnasium is unavailable")
+        config = ProblemConfig(
+            resolution=8,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            max_full_evals=32,
+            max_rl_full_evals=32,
+            max_episode_steps=8,
+            rl_sparse_reward=True,
+            volume_target=0.5,
+        )
+        seed_a = np.ones((8, 8), dtype=np.uint8)
+        env = make_refine_env(seed_a, config)
+        env.reset()
+        self.assertTrue(bool((env.mask == 1).all()))
+
+        seed_b = np.zeros((8, 8), dtype=np.uint8)
+        seed_b[:4, :] = 1  # vol = 0.5 roughly
+        env.set_seed_mask(seed_b)
+        env.reset()
+        self.assertEqual(int(env.mask.sum()), 32)
+        self.assertTrue(bool(np.array_equal(env.mask[:4, :], np.ones((4, 8), dtype=np.uint8))))
+
+    def test_local_greedy_polish_never_makes_worse(self) -> None:
+        """Phase 5: polish never returns a higher-score mask than the input
+        and never exceeds the per-polish FEA budget."""
+        from gigala.topology.topology_optimiz.gen_rl.fem import Evaluator
+        from gigala.topology.topology_optimiz.gen_rl.pipeline import (
+            _local_greedy_polish,
+            _seed_random_near_target,
+        )
+
+        config = ProblemConfig(
+            resolution=8,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            volume_target=0.5,
+            rl_volume_slack_upper=0.05,
+            rl_volume_tolerance=0.03,
+            rl_seed_strategy="random_near_target",
+            max_full_evals=500,
+            max_rl_full_evals=500,
+            random_seed=7,
+        )
+        evaluator = Evaluator(config)
+        seed_mask = _seed_random_near_target(config, evaluator)
+        initial_eval = evaluator.evaluate(seed_mask, "full64")
+        polished_mask, polished_eval, fea_used = _local_greedy_polish(
+            seed_mask,
+            evaluator,
+            config,
+            max_fea_budget=40,
+        )
+        self.assertEqual(polished_mask.shape, seed_mask.shape)
+        self.assertLessEqual(fea_used, 40)
+        if bool(initial_eval.passed_filters):
+            self.assertLessEqual(float(polished_eval.score), float(initial_eval.score) + 1e-9)
+            self.assertTrue(bool(polished_eval.passed_filters))
+
+    def test_seed_strategy_full_solid_preserves_legacy_behaviour(self) -> None:
+        from gigala.topology.topology_optimiz.gen_rl.fem import Evaluator
+        from gigala.topology.topology_optimiz.gen_rl.pipeline import _build_rl_seed
+
+        config = ProblemConfig(
+            resolution=20,
+            pipeline_mode="rl_only_exact",
+            enable_rl=False,
+            volume_target=0.55,
+            rl_seed_strategy="full_solid",
+            max_full_evals=4,
+            max_rl_full_evals=4,
+        )
+        evaluator = Evaluator(config)
+        seed, label = _build_rl_seed(config, evaluator)
+        self.assertEqual(label, "full_solid")
+        self.assertTrue(bool((seed == 1).all()))
 
     def test_summary_payload_includes_git_version_info(self) -> None:
         fake_git = {
