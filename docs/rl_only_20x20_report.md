@@ -270,42 +270,117 @@ All new fields are backwards-compatible defaults; set via env vars on the launch
 
 ### 7.2 Baseline table (seeds 17, 42, 2026; target = 0.55; resolution = 20)
 
-Numbers produced by `scripts/compute_baseline_20x20.py --random-samples 200
---eso-step-fraction 0.02 --eso-max-iterations 128`
-(see `runlogs/baseline_20x20_phase6/summary.json`). Lower score is better;
+Numbers produced by `scripts/compute_baseline_20x20.py --random-samples 1000
+--eso-step-fraction 0.02 --eso-max-iterations 256`
+(see `runlogs/baseline_20x20_server/summary.json`). Lower score is better;
 `feasible_rate` is across the 3 seeds.
 
-| Baseline | score (best) | score (median) | score (worst) | feasible_rate |
+**Per-seed scores** (lower is better; RL row shows `polish (harvested)`)
+
+| Baseline | seed 17 | seed 42 | seed 2026 |
+|---|---:|---:|---:|
+| `full_solid` | 1e12 | 1e12 | 1e12 |
+| `random_at_target` (N=1000) | 31.21 | 36.53 | 29.21 |
+| `eso_strain_energy` | 306.30 | 306.30 | 306.30 |
+| **RL post-plan, 3M** | **28.01** (29.22) | **27.31** (29.96) | **27.55** (28.50) |
+
+Source: `runlogs/gen_rl_rl_only_20x20_3seeds_20260421_143441/seed_<seed>/summary.json`
+(each seed: 3 M PPO steps, 8 envs, ≈2 h CPU).
+
+**Aggregate**
+
+| Baseline | best | median | worst | feasible_rate |
 |---|---:|---:|---:|---:|
 | `full_solid` | 1e12 | 1e12 | 1e12 | 0.00 |
-| `random_at_target` (N=200) | **41.58** | 48.13 | 1e12 | 0.67 |
-| `eso_strain_energy` (greedy ESO) | 306.30 | 306.30 | 306.30 | 1.00 |
-| RL (harvested best, seed 42, 3M steps, pre-plan) | **27.28** | — | — | 1.00 |
-| RL-only post-plan, 3 seeds, 3M steps | *TBD — run `scripts/run_rl_only_20x20_3seeds.sh`* | | | |
+| `random_at_target` (N=1000) | 29.21 | 31.21 | 36.53 | 1.00 |
+| `eso_strain_energy` | 306.30 | 306.30 | 306.30 | 1.00 |
+| **RL post-plan, 3M, polish** | **27.31** | **27.55** | **28.01** | **1.00** |
+
+**Per-seed RL-vs-random head-to-head**
+
+| Seed | RL polish | random@1000 | RL advantage |
+|---|---:|---:|---:|
+| 17 | 28.01 | 31.21 | 1.11× (10 %) |
+| 42 | 27.31 | 36.53 | 1.34× (25 %) |
+| 2026 | 27.55 | 29.21 | 1.06× (6 %) |
+
+**Per-seed RL diagnostics** (same sweep)
+
+| Seed | `final.volume_fraction` | `final.islands` | `feasible_rate` | `harvested_feasible` | polish Δ | `polish_fea_used` |
+|---|---:|---:|---:|---:|---:|---:|
+| 17 | 0.580 | 1 | 19.4 % (965/4 975) | 35/35 | 29.22 → 28.01 (−4.2 %) | 200 |
+| 42 | 0.573 | 1 | 92.6 % (347 110/374 939) | 55/55 | 29.96 → 27.31 (−8.9 %) | 200 |
+| 2026 | 0.560 | 1 | 96.2 % (399 802/415 549) | 69/69 | 28.50 → 27.55 (−3.3 %) | 200 |
 
 Takeaways from the baseline:
 
 1. **`full_solid` is strictly infeasible** at this target (as the docs §3.1
    already implied). It is kept in the table so we have a reference point for
    readers who assume "do-nothing" is a trivial baseline.
-2. **`random_at_target` at N=200 is surprisingly strong** — 0.5 % of samples
-   are feasible, but the best of them scores ≈42. This is the baseline the
-   paper should cite as "cheap random": any method worse than ~42 is not
-   doing useful work. Raising `--random-samples` to 1000–5000 usually brings
-   the best down into the high-30s.
+2. **`random_at_target` at N=1000 is surprisingly strong.** Only 0.1–0.7 %
+   of samples per seed are feasible (1/1000, 3/1000, 7/1000), but the best
+   of them scores 29–37. This is the baseline the paper should cite as
+   "cheap random": any learned method that does not beat ~30 on median is
+   not doing useful work above what a laptop's RNG achieves in ~3 min.
 3. **ESO strain-energy at ~306 is much worse than random** on this specific
-   20x20 cantilever. This is a known failure mode of purely greedy ESO on
+   20x20 cantilever — consistent across all three seeds (deterministic on
+   this problem). This is a known failure mode of purely greedy ESO on
    small grids: once the low-energy corner cells are removed, the remaining
    structure is a nearly-uniform cantilever and further removals get stuck
    in a poor local optimum. A more serious classical baseline would be a
-   density-based SIMP with filtering; we leave that to future work and flag
-   it in §4.
-4. **RL harvested best (27.28)** still beats the random-at-target median by
-   a factor of ~1.7 on seed 42, i.e. the policy is genuinely learning
-   something and the harvester is extracting it. Whether the RL mean across
-   seeds improves with the Phase-0–5 changes is exactly what the 3-seed
-   sweep is designed to answer — fill in the last row of the table after
-   running `scripts/run_rl_only_20x20_3seeds.sh`.
+   density-based SIMP with filtering; we leave that to future work.
+4. **RL post-plan beats random on every seed.** The head-to-head spread is
+   6–25 %, the median `27.55` is ~12 % below `random_at_target`'s median
+   and ~1 % above its best (29.21). Combined with the single-seed
+   pre-plan reference of 27.28 on seed 42, the post-plan pipeline
+   reproduces the same best-case quality but now *reliably* across seeds
+   and with an inference protocol (`harvested → policy → polish`) that
+   actually converges — see §7.3.
+5. **`polish` is doing real work.** Across all three seeds the local
+   boundary-flip polish reduces the score by 3–9 % over the harvested /
+   post-rollout best within its 200-FEA budget. That alone accounts for
+   the entire RL-vs-random gap on seed 2026 (harvested 28.50 ≈ random
+   29.21; polish 27.55 clearly wins).
+6. **Seed 17 is an outlier on `feasible_rate`** (19 % vs 92–96 % on the
+   other seeds) but the end-to-end score is still competitive. This is
+   evidence that the harvester + polish combo is robust to training-time
+   luck: even when the policy only occasionally produces feasible terminals,
+   the ~35 feasible candidates that *do* get saved are enough for polish to
+   reach a similar end-state. This is the single most important practical
+   take-away for future multi-seed experiments on this branch.
+
+Takeaways from the baseline:
+
+1. **`full_solid` is strictly infeasible** at this target (as the docs §3.1
+   already implied). It is kept in the table so we have a reference point for
+   readers who assume "do-nothing" is a trivial baseline.
+2. **`random_at_target` at N=1000 is surprisingly strong.** Only 0.1–0.7 %
+   of samples per seed are feasible (1/1000, 3/1000, 7/1000), but the best
+   of them scores 29–37. This is the baseline the paper should cite as
+   "cheap random": any learned method that does not beat ~30 on median is
+   not doing useful work above what a laptop's RNG achieves in ~3 min.
+3. **ESO strain-energy at ~306 is much worse than random** on this specific
+   20x20 cantilever — consistent across all three seeds (deterministic on
+   this problem). This is a known failure mode of purely greedy ESO on
+   small grids: once the low-energy corner cells are removed, the remaining
+   structure is a nearly-uniform cantilever and further removals get stuck
+   in a poor local optimum. A more serious classical baseline would be a
+   density-based SIMP with filtering; we leave that to future work.
+4. **RL post-plan on seed 42** lands at 27.31 after the polish step — a
+   **1.34× improvement over random-at-target on the same seed** (36.53),
+   and 11× improvement over ESO. The policy/harvested score (29.96) is
+   already competitive with the *best* seed of random sampling (29.21),
+   and the polish takes it clearly below.
+5. The full 3-seed sweep is running (6 h wall-clock on CPU). Once it
+   finishes, fill in seeds 17 and 2026 in the table above; the expected
+   pattern is that RL beats random on every seed by ~20–50 % after polish.
+
+### 7.2.1 Artifacts
+
+- Sweep root: `runlogs/gen_rl_rl_only_20x20_3seeds_20260421_143441/`
+- Per-seed: `seed_{17,42,2026}/{summary.json,archive.json,best20.{npy,png},seed20.npy,terminal.log}`
+- Baselines: `runlogs/baseline_20x20_server/summary.json`
+  (produced by `scripts/compute_baseline_20x20.py --seeds 17 42 2026 --random-samples 1000`)
 
 ### 7.3 Reproducing the numbers
 
