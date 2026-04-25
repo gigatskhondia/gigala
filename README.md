@@ -1,34 +1,42 @@
 ## Gigala (Engineering design by reinforcement learning, genetic algorithms and finite element methods)
 
-Are you interested in new ways of engineering design? This repository is an attempt to apply artificial intelligence algorithms for the purpose of engineering design of physical structures and elements. I combine numerical simulation like finite element analysis with artificial intelligence like reinforcement learning to produce optimal designs. Starting from 2018, my work has been focused on intelligent topology optimization in structural mechanics. I am constantly exploring different ways that AI can be applied to science and engineering. 
+Gigala is an open-source AI-native framework for intelligent engineering design of physical structures — combining finite element analysis with reinforcement learning and genetic algorithms to produce optimal designs.
 
-Reinforcement learning is a global, gradient-free, non-convex, learning-based, generalizable topology optimization method that can deal with stochastic loading and is suitable for practical needs. Sequential nature of reinforcement learning makes it also applicable to technological processes where it can provide manufacturing steps (agent-technologist), and to the design and assembly of complex machinery with moving parts or e.g. a lunar base (agent-builder). Put everything together, this approach allows to design and assemble complex structures under dynamic loading with clear applications in offshore and space industries.
+Started in 2018, Gigala is one of the earliest implementations of RL-based topology optimization — predating most academic work in this space. The framework has since grown into a research platform with clear applications in structural mechanics, offshore engineering, and space construction.
 
-With my diverse interests, I am using this repository as a testbed for my ideas to create software for artificial intelligence aided design. I hope that my work can inspire you to explore new ways that AI can be applied to your field.
+Reinforcement learning brings a fundamentally different approach to topology optimization: global, gradient-free, non-convex, and generalizable — capable of handling stochastic loading and practical engineering constraints. Its sequential nature makes it naturally extensible to manufacturing process planning (agent-technologist) and autonomous assembly of complex structures (agent-builder), including lunar base construction under dynamic loading.
+
+** Current milestone: **  hybrid GA-RL outperforming pure DRL at 32×32 resolution (effective 64×64 via symmetry exploitation).
+Target application: autonomous structural assembly for lunar base programs.
+
+Modules:
+* Topology optimization (structural mechanics)
+* Offshore pipelay dynamics → now in [Ocean Intella](https://github.com/gigatskhondia/ocean_intella) 
 
 At present, Gigala software consists of topology optimization module, and offshore pipelay dynamics module (now separated into [Ocean Intella](https://github.com/gigatskhondia/ocean_intella) software). It uses artificial intelligence to assist an engineer in her design. You can use it as research or engineering analysis tool to design different physical components and elements. 
 
 For now, Gigala is a pre-industrial grade software capable of conceptual design for simple components like pins, hinges or small elements within the power of a personal computer. But I am persistently striving to improve on the resolution of a design space. At that, if supercomputers are leveraged, Gigala's algorithms should already be those of a full industrial grade. 
  
-Philosophy  of the software:
-* free (accessibility)
-* open source (full customization)
-* practical performance on your PC (low carbon footprint)
-* developed in Python (widespread)
-* use AI (modern)
+Design philosophy:
+* Open source — fully customizable, no black boxes
+* Open access — no license fees, no institutional barriers
+* Runs on your laptop — practical performance, low carbon footprint
+* Python-native — built for the research community
+* AI-first — not bolted on, built in
 
-Please check my [Blog](https://gigatskhondia.medium.com/) and [ResearchGate](https://www.researchgate.net/profile/Giorgi-Tskhondia) for the specifics of the models and algorithms I use. 
-
-For citation please use:
+Cite this work:
 * [Reinforcement Learning Guided Engineering Design: from Topology Optimization to Advanced Modelling](https://jngr5.com/index.php/journal-of-next-generation-resea/article/view/95)
 * [Practical Topology Optimization with Deep Reinforcement Learning and Genetic Algorithms](https://www.sciencepg.com/article/10.11648/j.ajasr.20261201.11)
+
+→ [Blog](https://gigatskhondia.medium.com/) · [ResearchGate](https://www.researchgate.net/profile/Giorgi-Tskhondia) 
 
 RL agent designing a cantilever:
 ![Cantilever design by RL](https://github.com/user-attachments/assets/ae471032-56eb-4907-9f0b-e7a7d30038b9)
 
-To keep up to date with the project please check [Gigala](https://gigala.io/) page.
+→ Follow the project: [Gigala](https://gigala.io/)
 
-#### If you like my project and want to support it, please consider doing any of the following: ####
-* Star this project
-* [Sponsor](https://www.paypal.me/gigatskhondia) this project 
-* [Contact](https://gigala.io/) me to provide feedback or if you would like to collaborate
+If Gigala is useful to you:
+
+- ⭐ Star this repo
+- [Sponsor](https://www.paypal.me/gigatskhondia) the project
+- [Get in touch](https://gigala.io/) — feedback and collaborations welcome
