@@ -2,12 +2,12 @@
 
 Gigala is an open-source AI-native framework for intelligent engineering design of physical structures — combining finite element analysis with reinforcement learning and genetic algorithms to produce optimal designs.
 
-Started in 2018, Gigala is one of the earliest implementations of RL-based topology optimization — predating most academic work in this space. The framework has since grown into a research platform with clear applications in structural mechanics, offshore engineering, and space construction.
+Gigala is, to the best of my knowledge, one of the earliest implementations of RL-based topology optimization — with development starting in 2018, predating most academic publications in this space. The framework has since grown into a research platform with clear applications in structural mechanics, offshore engineering, and space construction.
 
 Reinforcement learning brings a fundamentally different approach to topology optimization: global, gradient-free, non-convex, and generalizable — capable of handling stochastic loading and practical engineering constraints. Its sequential nature makes it naturally extensible to manufacturing process planning (agent-technologist) and autonomous assembly of complex structures (agent-builder), including lunar base construction under dynamic loading.
 
 **Current milestone:**  hybrid GA-RL outperforming pure DRL at 32×32 resolution (effective 64×64 via symmetry exploitation).
-Target application: autonomous structural assembly for lunar base programs.
+Target applications include autonomous structural assembly for lunar base programs, offshore infrastructure, and complex mechanical systems.
 
 Modules:
 * Topology optimization (structural mechanics)
