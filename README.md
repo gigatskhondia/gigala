@@ -12,10 +12,6 @@ Target application: autonomous structural assembly for lunar base programs.
 Modules:
 * Topology optimization (structural mechanics)
 * Offshore pipelay dynamics → now in [Ocean Intella](https://github.com/gigatskhondia/ocean_intella) 
-
-At present, Gigala software consists of topology optimization module, and offshore pipelay dynamics module (now separated into [Ocean Intella](https://github.com/gigatskhondia/ocean_intella) software). It uses artificial intelligence to assist an engineer in her design. You can use it as research or engineering analysis tool to design different physical components and elements. 
-
-For now, Gigala is a pre-industrial grade software capable of conceptual design for simple components like pins, hinges or small elements within the power of a personal computer. But I am persistently striving to improve on the resolution of a design space. At that, if supercomputers are leveraged, Gigala's algorithms should already be those of a full industrial grade. 
  
 Design philosophy:
 * Open source — fully customizable, no black boxes
