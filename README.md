@@ -6,7 +6,7 @@ Started in 2018, Gigala is one of the earliest implementations of RL-based topol
 
 Reinforcement learning brings a fundamentally different approach to topology optimization: global, gradient-free, non-convex, and generalizable — capable of handling stochastic loading and practical engineering constraints. Its sequential nature makes it naturally extensible to manufacturing process planning (agent-technologist) and autonomous assembly of complex structures (agent-builder), including lunar base construction under dynamic loading.
 
-** Current milestone: **  hybrid GA-RL outperforming pure DRL at 32×32 resolution (effective 64×64 via symmetry exploitation).
+**Current milestone:**  hybrid GA-RL outperforming pure DRL at 32×32 resolution (effective 64×64 via symmetry exploitation).
 Target application: autonomous structural assembly for lunar base programs.
 
 Modules:
