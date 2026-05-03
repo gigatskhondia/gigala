@@ -6,8 +6,7 @@ Gigala is, to the best of my knowledge, one of the earliest implementations of R
 
 Reinforcement learning brings a fundamentally different approach to topology optimization: global, gradient-free, non-convex, and generalizable — capable of handling stochastic loading and practical engineering constraints. Its sequential nature makes it naturally extensible to manufacturing process planning (agent-technologist) and autonomous assembly of complex structures (agent-builder), including lunar base construction under dynamic loading.
 
-**Current milestone:**  hybrid GA-RL outperforming pure DRL at 32×32 resolution (effective 64×64 via symmetry exploitation).
-Target applications include autonomous structural assembly for lunar base programs, offshore infrastructure, and complex mechanical systems.
+**Current milestone:**  hybrid GA-RL outperforming pure DRL at 32×32 resolution (effective 64×64 via symmetry exploitation), and it has reached a pre-industrial grade where the software can design small elements like pins, hinges, bracket, etc. on a typical PC. Target applications include autonomous structural assembly for lunar base programs, offshore infrastructure, and complex mechanical systems.
 
 Modules:
 * Topology optimization (structural mechanics)
