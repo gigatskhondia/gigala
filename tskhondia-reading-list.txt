@@ -1,0 +1,73 @@
+This is a reading list which, I think, significantly but indirectly contributed to the creation of Gigala and Ocean Intella software.
+
+It took me just 9 years (from mid 2017 to mid 2026) to read this list. Enjoy :)
+
+•Прикладная механика сплошных сред. Т1 -Т3, Бабкин, Колпаков, Охотин, Селиванов
+•Курс общей физики. Молекулярная физика и термодинамика. Савельев 
+•Курс общей физики. Квантовая оптика. Атомная физика. Физика твердого тела. Физика атомного ядра и элементарных частиц. Савельев 
+•Зельдович Я.Б. Высшая математика для начинающих.
+•FORTRAN : Основы программирования. Артемов, И. Л.
+•Программируем на Python 3. Марк Саммерфилд
+•CUDA by Example. Sanders&Kandrot
+•Cython. A guide for Python programmers. Smith
+•Изучаем SQL. Алан Бьюли
+•Фихтенгольц I, II, III
+•OpenIntro Statistics
+•Hands-On Machine Learning with Scikit-Learn and TensorFlow. Aurélien Géron 
+•Deep Learning. Goodfellow 
+•Supervised Sequence Labelling with Recurrent Neural Networks. Graves
+•Fluent Python. Luciano Ramalho
+•Programming the Finite Element Method 5th Edition by I. M. Smith et al 
+•Язык программирования Си. Керниган, Ритчи 
+•Introduction to Algorithms. Cormen 
+•ISLR 
+•Reinforcement Learning: An Introduction. Sutton & Barto 
+•Pattern recognition and machine learning. Bishop
+•Deep Learning with Python, François Chollet
+•Code. charles petzold
+•Cracking the Coding Interview
+•https://gameprogrammingpatterns.com/contents.html 
+•Beginning C++ Through Game Programming, Third Edition. Michael Dawson 
+•The Annotated Turing: A Guided Tour Through Alan Turing's Historic Paper on Computability and the Turing Machine
+•Machine Super intelligence by Shane Legg
+•A first course in probability. Ross, 8th ed
+•Wirsansky, Eyal. Hands-On Genetic Algorithms with Python: Applying genetic algorithms to solve real-world deep learning and artificial intelligence problems
+•Ильин, В. А.,  Позняк, Э. Г. Линейная алгебра
+•A First Course in the Finite Element Method Daryl L. Logan
+•Grokking algorithms Aditya Y. Bhargava
+•The Design of Innovation by David Goldberg
+•Evolutionary Algorithms in Engineering Applications. D. Dasgupta, Z.Michalewicz 
+•Natural Language Processing with Transformers. Lewis Tunstall et al 
+•Applied Finite Element Analysis, 2nd Edition, Larry J. Segerlind
+•Высшая математика. Шипачев В.С.
+•Electrical Engineering 101 
+•Topology Optimization Theory, Methods, and Applications
+•Handbook of Marine Craft Hydrodynamics and Motion Control. Thor I. Fossen 
+•https://spinningup.openai.com/en/latest/
+•Computational Methods for Plasticity Theory and Applications
+•Digital Design and Computer Architecture by David Harris , Sarah Harris  
+•Sams Teach Yourself C++ in 21 Days
+•Head First Design Patterns: Building Extensible and Maintainable Object-Oriented Software, 2 edition 
+•Dynamics of offshore structures.  Wilson
+•Курс высшей алгебры. А. Г. Курош 
+•https://nandgame.com/
+•Виленкин (1969). Комбинаторика. Наука, Главная редакция физико-математической литературы. 
+•Теория вероятностей. Вентцель 
+•Dynamic Programming and Optimal Control by Dimitri P. Bertsekas – Vol. I and Vol. II 
+•Finite Element Procedures in Engineering Analysis Bathe K.J
+•Water Wave Mechanics for Engineers & Scientists, Dean, Dalrymple
+•Rocket Propulsion Elements by George P. Sutton & Oscar Biblarz  
+•Введение в механику сплошных сред. Бреховских, Гончаров  
+•ESLII + https://dyakonov.org/map  
+•Sea Loads On Ships and Offshore Structures 
+•Designing Data-Intensive Applications
+•Computational Fluid Dynamics the Basics With Applications Anderson J D
+•Axler's Measure, Integration, and Real Analysis 
+•Functional Analysis, Sobolev Spaces and Partial, Differential Equations. Haim Brezis 
+•О. Я. Виро, О. А. Иванов Н. Ю. Нецветаев, В. М. Харламов ЭЛЕМЕНТАРНАЯ ТОПОЛОГИЯ. 
+•Stochastic Optimal Control: The Discrete-Time Case, Dimitri P. Bertsekas and Steven E. Shreve
+•Лаврентьев М. А. Шабат Б.В. Методы ТФКП
+•А.Н.Тихонов, А.А.Самарский УРАВНЕНИЯ МАТЕМАТИЧЕСКОЙ ФИЗИКИ
+•The mathematical theory of finite element methods 
+•Guide to competitive programming - 2020 + https://cses.fi/problemset/  
+ 
