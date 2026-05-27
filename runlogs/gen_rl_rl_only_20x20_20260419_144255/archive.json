@@ -1,0 +1,27 @@
+{
+  "entries": [
+    {
+      "index": 0,
+      "volume_fraction": 1.0,
+      "smoothness": 0,
+      "islands": 1
+    }
+  ],
+  "search_trace": [
+    {
+      "event": "rl_only_seed",
+      "seed_type": "full_solid",
+      "score": 1000000000000.0,
+      "volume": 1.0,
+      "passed_filters": false,
+      "invalid_reason": "volume_out_of_range"
+    },
+    {
+      "event": "rl_only_refinement",
+      "seed_score": 1000000000000.0,
+      "candidate_score": 1000000000000.0,
+      "accepted": false,
+      "final_score": 1000000000000.0
+    }
+  ]
+}
