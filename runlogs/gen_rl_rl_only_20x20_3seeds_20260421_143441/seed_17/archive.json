@@ -1,0 +1,27 @@
+{
+  "entries": [
+    {
+      "index": 0,
+      "volume_fraction": 0.6,
+      "smoothness": 350,
+      "islands": 1
+    }
+  ],
+  "search_trace": [
+    {
+      "event": "rl_only_seed",
+      "seed_type": "random_near_target",
+      "score": 1000000000000.0,
+      "volume": 0.595,
+      "passed_filters": false,
+      "invalid_reason": "volume_out_of_range"
+    },
+    {
+      "event": "rl_only_refinement",
+      "seed_score": 1000000000000.0,
+      "candidate_score": 28.00559480779919,
+      "accepted": true,
+      "final_score": 28.00559480779919
+    }
+  ]
+}
