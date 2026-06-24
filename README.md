@@ -1,6 +1,6 @@
 ## Gigala (Engineering design by reinforcement learning, genetic algorithms and finite element methods)
 
-Gigala is an open-source AI-native framework for intelligent engineering design of physical structures — combining finite element analysis with reinforcement learning and genetic algorithms to produce optimal designs.
+Gigala is an open-source AI-native software for intelligent engineering design of physical structures — combining finite element analysis with reinforcement learning and genetic algorithms to produce optimal designs.
 
 Gigala is, to the best of my knowledge, one of the earliest implementations of RL-based topology optimization — with development starting in 2018, predating most academic publications in this space. The framework has since grown into a research platform with clear applications in structural mechanics, offshore engineering, and space construction.
 
