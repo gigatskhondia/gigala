@@ -69,5 +69,6 @@ It took me just 9 years (from mid 2017 to mid 2026) to read this list. Enjoy :)
 •Лаврентьев М. А. Шабат Б.В. Методы ТФКП
 •А.Н.Тихонов, А.А.Самарский УРАВНЕНИЯ МАТЕМАТИЧЕСКОЙ ФИЗИКИ
 •The mathematical theory of finite element methods 
-•Guide to competitive programming - 2020 + https://cses.fi/problemset/  
+•Guide to competitive programming - 2020 + https://cses.fi/problemset/
+•Modern Robotics: Mechanics, Planning, and Control. Kevin M. Lynch and Frank C. Park
  
