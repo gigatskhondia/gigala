@@ -1,0 +1,4 @@
+interface:
+  display_name: "Grill Me"
+  short_description: "Probe every branch of a plan"
+  default_prompt: "Use $grill-me to interrogate this plan or design, inspect the codebase where possible, and recommend an answer for every question."
