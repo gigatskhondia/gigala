@@ -1,0 +1,1236 @@
+from __future__ import annotations
+
+import dataclasses
+import math
+import os
+import time
+from dataclasses import dataclass, field
+from typing import Any, Callable
+
+import numpy as np
+
+from .coarse_search import SearchCandidate, boundary_local_search, run_coarse_search
+from .direct_search import DirectSearchArtifacts, run_direct_search_core
+from .fem import EvalResult, Evaluator, ProblemConfig, evaluation_snapshot
+from .metrics import count_islands, retain_components_touching_region
+from .representation import (
+    boundary_patch_coordinates,
+    infer_stage_resolutions,
+    upsample_binary_mask,
+)
+
+
+@dataclass
+class StageArtifacts:
+    coarse16: np.ndarray
+    refined32: np.ndarray | None
+    refined64: np.ndarray | None
+    metrics: dict[str, dict[str, Any]]
+    fea_counts: dict[str, float]
+    runtime: float
+    warnings: list[str] = field(default_factory=list)
+
+
+ProgressFn = Callable[[str], None]
+
+
+@dataclass
+class DirectRLDegeneracyMonitor:
+    episode_window: int
+    immediate_stop_flags: list[bool] = field(default_factory=list)
+    episodes_observed: int = 0
+    stopped_early: bool = False
+    reason: str | None = None
+
+    def observe_episode(self, info: dict[str, Any]) -> bool:
+        episode = info.get("episode")
+        if not isinstance(episode, dict):
+            return False
+        self.episodes_observed += 1
+        diagnostics = info.get("rl_diagnostics")
+        diagnostics = diagnostics if isinstance(diagnostics, dict) else {}
+        immediate_stop = (
+            int(episode.get("l", 0)) <= 1
+            and bool(diagnostics.get("stop_used"))
+            and bool(info.get("stop_penalty_applied"))
+            and int(diagnostics.get("accepted_removals", 0)) == 0
+        )
+        self.immediate_stop_flags.append(immediate_stop)
+        if self.episode_window > 0 and len(self.immediate_stop_flags) > self.episode_window:
+            self.immediate_stop_flags = self.immediate_stop_flags[-self.episode_window :]
+        if (
+            self.episode_window > 0
+            and len(self.immediate_stop_flags) >= self.episode_window
+            and all(self.immediate_stop_flags[-self.episode_window :])
+        ):
+            self.stopped_early = True
+            self.reason = f"degenerate_immediate_stop_policy:{self.episode_window}_episodes"
+            return True
+        return False
+
+    def snapshot(self) -> dict[str, Any]:
+        recent_window = self.immediate_stop_flags[-self.episode_window :] if self.episode_window > 0 else []
+        return {
+            "episode_window": int(self.episode_window),
+            "episodes_observed": int(self.episodes_observed),
+            "immediate_stop_episodes_in_window": int(sum(recent_window)),
+            "stopped_early": bool(self.stopped_early),
+            "reason": self.reason,
+        }
+
+
+def _result_to_dict(result: EvalResult) -> dict[str, Any]:
+    return dataclasses.asdict(result)
+
+
+def _resolve_rl_device(config: ProblemConfig, *, progress: ProgressFn | None = None, torch_module: Any | None = None) -> str:
+    requested = config.rl_device
+    if torch_module is None:
+        try:  # pragma: no cover - optional dependency
+            import torch as torch_module  # type: ignore[no-redef]
+        except Exception:
+            if progress:
+                progress("torch is unavailable; RL device forced to cpu.")
+            return "cpu"
+
+    if requested == "cpu":
+        return "cpu"
+
+    if requested == "cuda":
+        if bool(torch_module.cuda.is_available()):
+            return "cuda"
+        if progress:
+            progress("requested rl_device=cuda but CUDA is unavailable; falling back to cpu.")
+        return "cpu"
+
+    if requested == "mps":
+        if hasattr(torch_module.backends, "mps") and bool(torch_module.backends.mps.is_available()):
+            return "mps"
+        if progress:
+            progress("requested rl_device=mps but MPS is unavailable; falling back to cpu.")
+        return "cpu"
+
+    if requested == "auto":
+        if hasattr(torch_module.backends, "mps") and bool(torch_module.backends.mps.is_available()):
+            return "mps"
+        if bool(torch_module.cuda.is_available()):
+            return "cuda"
+        return "cpu"
+
+    if progress:
+        progress(f"unknown rl_device={requested}; falling back to cpu.")
+    return "cpu"
+
+
+def evaluate(
+    mask: np.ndarray,
+    fidelity: str,
+    *,
+    config: ProblemConfig | None = None,
+    evaluator: Evaluator | None = None,
+) -> EvalResult:
+    if evaluator is None:
+        if config is None:
+            raise ValueError("Either config or evaluator must be provided.")
+        evaluator = Evaluator(config)
+    return evaluator.evaluate(mask, fidelity)  # type: ignore[arg-type]
+
+
+def _evaluation_ranking_key(result: EvalResult) -> tuple[float, float, float, int]:
+    feasible_rank = 0.0 if result.passed_filters else 1.0
+    return (
+        feasible_rank,
+        float(result.score),
+        float(result.compliance),
+        int(result.smoothness),
+    )
+
+
+def _select_monotonic_refinement(
+    incumbent_mask: np.ndarray,
+    incumbent_eval: EvalResult,
+    candidate_mask: np.ndarray,
+    candidate_eval: EvalResult,
+) -> tuple[np.ndarray, EvalResult, dict[str, Any]]:
+    incumbent_key = _evaluation_ranking_key(incumbent_eval)
+    candidate_key = _evaluation_ranking_key(candidate_eval)
+    accepted = candidate_key < incumbent_key
+    if accepted:
+        reason = "accepted_better_rl_candidate"
+        selected_mask = candidate_mask
+        selected_eval = candidate_eval
+    elif not candidate_eval.passed_filters:
+        reason = f"rejected_invalid_rl_candidate:{candidate_eval.invalid_reason or 'unknown'}"
+        selected_mask = incumbent_mask
+        selected_eval = incumbent_eval
+    else:
+        reason = "rejected_non_improving_rl_candidate"
+        selected_mask = incumbent_mask
+        selected_eval = incumbent_eval
+    return selected_mask, selected_eval, {
+        "accepted": accepted,
+        "reason": reason,
+        "incumbent_score": float(incumbent_eval.score),
+        "candidate_score": float(candidate_eval.score),
+        "selected_score": float(selected_eval.score),
+        "candidate_valid": bool(candidate_eval.passed_filters),
+        "incumbent_valid": bool(incumbent_eval.passed_filters),
+    }
+
+
+def _is_better_result(candidate: EvalResult, incumbent: EvalResult) -> bool:
+    return _evaluation_ranking_key(candidate) < _evaluation_ranking_key(incumbent)
+
+
+def _build_rl_seed_list(best64: np.ndarray, archive_best: list[np.ndarray], top_k: int) -> list[np.ndarray]:
+    seeds: list[np.ndarray] = []
+    seen: set[bytes] = set()
+    for mask in [best64, *archive_best]:
+        signature = np.ascontiguousarray(mask).tobytes()
+        if signature in seen:
+            continue
+        seen.add(signature)
+        seeds.append(mask.copy())
+        if len(seeds) >= top_k:
+            break
+    return seeds
+
+
+def _maybe_run_rl(
+    seed_mask: np.ndarray,
+    config: ProblemConfig,
+    evaluator: Evaluator,
+    warnings: list[str],
+    seed_evaluation: EvalResult | None = None,
+    progress: ProgressFn | None = None,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    diagnostics: dict[str, Any] = {
+        "terminal_reason_counts": {},
+        "training_best": None,
+        "training_best_source": None,
+    }
+    if not config.enable_rl:
+        warnings.append("RL refinement disabled by config; returning boundary-refined seed.")
+        if progress:
+            progress("RL refinement disabled by config; returning boundary-refined seed.")
+        return seed_mask, diagnostics
+    try:  # pragma: no cover - optional dependency
+        os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+        import torch
+        from sb3_contrib import MaskablePPO
+        from stable_baselines3.common.callbacks import BaseCallback
+        from stable_baselines3.common.monitor import Monitor
+        from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
+    except Exception:
+        warnings.append("MaskablePPO dependencies are unavailable; returning boundary-refined seed.")
+        if progress:
+            progress("MaskablePPO dependencies are unavailable; returning boundary-refined seed.")
+        return seed_mask, diagnostics
+
+    from .refine_env import default_policy_kwargs, make_refine_env
+
+    n_envs = max(1, int(config.rl_n_envs))
+    use_vec = n_envs > 1
+    if use_vec:
+        device = "cpu"
+        if config.rl_device != "cpu" and progress:
+            progress(
+                f"vectorized envs active (n_envs={n_envs}); forcing rl_device=cpu "
+                f"(requested={config.rl_device}) for stable multiprocessing."
+            )
+    else:
+        device = _resolve_rl_device(config, progress=progress, torch_module=torch)
+    if progress:
+        progress(
+            f"starting RL refinement: total_timesteps={config.rl_total_timesteps}, "
+            f"max_rl_full_evals={config.max_rl_full_evals}, n_envs={n_envs}, device={device}, "
+            f"sparse_reward={config.rl_sparse_reward}, policy_size={config.rl_policy_size}"
+        )
+
+    single_env = make_refine_env(seed_mask, config, evaluator=evaluator)
+    single_monitor = Monitor(single_env)
+    single_base = single_monitor.unwrapped
+    if seed_evaluation is not None and hasattr(single_base, "register_seed_evaluation"):
+        single_base.register_seed_evaluation(seed_evaluation)
+
+    def _make_worker_env(worker_index: int):
+        def _init():
+            from .fem import Evaluator as _Evaluator  # re-import inside worker proc
+
+            worker_config = dataclasses.replace(
+                config, random_seed=config.random_seed + worker_index + 1
+            )
+            worker_evaluator = _Evaluator(worker_config)
+            env = make_refine_env(seed_mask, worker_config, evaluator=worker_evaluator)
+            if seed_evaluation is not None and hasattr(env, "register_seed_evaluation"):
+                env.register_seed_evaluation(seed_evaluation)
+            return Monitor(env)
+
+        return _init
+
+    if use_vec:
+        try:
+            training_env = SubprocVecEnv([_make_worker_env(i) for i in range(n_envs)])
+        except Exception as exc:
+            warnings.append(f"SubprocVecEnv unavailable ({exc}); falling back to DummyVecEnv.")
+            if progress:
+                progress(
+                    f"SubprocVecEnv unavailable ({exc}); falling back to DummyVecEnv with n_envs={n_envs}."
+                )
+            training_env = DummyVecEnv([_make_worker_env(i) for i in range(n_envs)])
+    else:
+        training_env = single_monitor
+
+    harvest_topk = max(0, int(config.rl_best_harvest_topk))
+
+    class _RLTrainingCallback(BaseCallback):
+        def __init__(self) -> None:
+            super().__init__()
+            self.best_global_mask: np.ndarray | None = None
+            self.best_global_eval: EvalResult | None = None
+            self.seen_digests: set[bytes] = set()
+            self.terminal_reason_totals: dict[str, int] = {}
+            self.harvested_candidates = 0
+            self.harvested_feasible = 0
+
+        def _on_rollout_start(self) -> None:
+            if not bool(config.rl_schedule_hparams):
+                return
+            try:
+                ent_coef, target_kl = _schedule_hparams_for_step(
+                    config, int(self.num_timesteps)
+                )
+                self.model.ent_coef = ent_coef
+                self.model.target_kl = target_kl
+            except Exception:
+                pass
+
+        def _on_step(self) -> bool:
+            current = int(self.num_timesteps)
+            try:
+                if use_vec:
+                    self.training_env.env_method("set_global_step", current)
+                else:
+                    if hasattr(single_base, "set_global_step"):
+                        single_base.set_global_step(current)
+            except Exception:
+                pass
+            return True
+
+        def _harvest_reason_counts(self) -> None:
+            try:
+                if use_vec:
+                    drained = self.training_env.env_method("drain_terminal_reason_counts")
+                else:
+                    if hasattr(single_base, "drain_terminal_reason_counts"):
+                        drained = [single_base.drain_terminal_reason_counts()]
+                    else:
+                        drained = []
+            except Exception:
+                drained = []
+            for snapshot in drained:
+                if not isinstance(snapshot, dict):
+                    continue
+                for key, value in snapshot.items():
+                    self.terminal_reason_totals[key] = (
+                        self.terminal_reason_totals.get(key, 0) + int(value)
+                    )
+
+        def _harvest_best_candidates(self) -> None:
+            if harvest_topk <= 0:
+                return
+            try:
+                if use_vec:
+                    results = self.training_env.env_method("best_result")
+                else:
+                    if hasattr(single_base, "best_result"):
+                        results = [single_base.best_result()]
+                    else:
+                        results = []
+            except Exception:
+                results = []
+            candidates: list[tuple[np.ndarray, float]] = []
+            for mask, worker_eval in results:
+                if worker_eval is None:
+                    continue
+                if not bool(getattr(worker_eval, "passed_filters", False)):
+                    continue
+                digest = np.ascontiguousarray(mask, dtype=np.uint8).tobytes()
+                if digest in self.seen_digests:
+                    continue
+                self.seen_digests.add(digest)
+                candidates.append(
+                    (np.ascontiguousarray(mask, dtype=np.uint8).copy(), float(getattr(worker_eval, "score", np.inf)))
+                )
+            candidates.sort(key=lambda item: item[1])
+            for mask, _score in candidates[:harvest_topk]:
+                self.harvested_candidates += 1
+                try:
+                    evaluation = evaluator.evaluate(mask, "full64")
+                except Exception:
+                    continue
+                if bool(getattr(evaluation, "passed_filters", False)):
+                    self.harvested_feasible += 1
+                if self.best_global_eval is None or _is_better_result(evaluation, self.best_global_eval):
+                    self.best_global_mask = mask.copy()
+                    self.best_global_eval = evaluation
+
+        def _on_rollout_end(self) -> None:
+            self._harvest_reason_counts()
+            self._harvest_best_candidates()
+            if progress and (self.best_global_eval is not None or self.terminal_reason_totals):
+                reason_preview = ", ".join(
+                    f"{k}={v}"
+                    for k, v in sorted(self.terminal_reason_totals.items(), key=lambda kv: -kv[1])[:3]
+                )
+                best_score = (
+                    f"{self.best_global_eval.score:.4f}"
+                    if self.best_global_eval is not None
+                    else "n/a"
+                )
+                progress(
+                    f"training harvest@{int(self.num_timesteps)}: "
+                    f"best_training_score={best_score}, "
+                    f"harvested_feasible={self.harvested_feasible}/{self.harvested_candidates}, "
+                    f"reasons_top3=[{reason_preview}]"
+                )
+
+    callback = _RLTrainingCallback()
+    lr_spec = _build_lr_schedule(config)
+    ppo_kwargs: dict[str, Any] = dict(
+        policy_kwargs=default_policy_kwargs(config.rl_policy_size),
+        verbose=1 if progress else 0,
+        seed=config.random_seed,
+        device=device,
+        ent_coef=float(config.rl_ent_coef),
+        target_kl=float(config.rl_target_kl) if config.rl_target_kl > 0.0 else None,
+        batch_size=int(config.rl_batch_size),
+        learning_rate=lr_spec,
+    )
+    model = MaskablePPO(
+        "CnnPolicy",
+        training_env,
+        **ppo_kwargs,
+    )
+    if progress:
+        progress(
+            f"PPO: batch_size={int(config.rl_batch_size)}, "
+            f"lr_schedule={config.rl_lr_schedule} ({config.rl_lr_initial:.2e}->{config.rl_lr_final:.2e}), "
+            f"ent_coef schedule={float(config.rl_ent_coef):.4f}->{float(config.rl_ent_coef_final):.4f}, "
+            f"target_kl schedule={float(config.rl_target_kl):.4f}->{float(config.rl_target_kl_final):.4f}, "
+            f"schedules_enabled={bool(config.rl_schedule_hparams)}"
+        )
+    try:
+        model.learn(total_timesteps=config.rl_total_timesteps, callback=callback)
+    finally:
+        if use_vec:
+            try:
+                training_env.close()
+            except Exception:
+                pass
+
+    # Final harvest in case learn() exited before _on_rollout_end.
+    callback._harvest_reason_counts()
+    callback._harvest_best_candidates()
+
+    diagnostics["terminal_reason_counts"] = dict(callback.terminal_reason_totals)
+    diagnostics["harvested_candidates"] = int(callback.harvested_candidates)
+    diagnostics["harvested_feasible"] = int(callback.harvested_feasible)
+    if callback.best_global_eval is not None:
+        diagnostics["training_best"] = _result_to_dict(callback.best_global_eval)
+
+    if progress:
+        progress(
+            "RL training completed; running multi-rollout inference "
+            f"(rollouts={config.rl_inference_rollouts})."
+        )
+
+    selected_mask, selected_source, inference_scores = _rollout_inference(
+        model,
+        single_monitor,
+        evaluator,
+        config,
+        harvested_best_mask=callback.best_global_mask,
+        harvested_best_eval=callback.best_global_eval,
+        progress=progress,
+    )
+    diagnostics["inference_scores"] = inference_scores
+    selected_eval = evaluator.evaluate(selected_mask, "full64")
+    if hasattr(single_base, "best_result"):
+        best_mask, best_eval = single_base.best_result()
+        if best_eval is not None and _is_better_result(best_eval, selected_eval):
+            selected_mask = best_mask
+            selected_eval = best_eval
+            selected_source = "training_best_rollout_env"
+            diagnostics["training_best_source"] = "rollout_env"
+    diagnostics["selected_source"] = selected_source
+    if progress:
+        progress(
+            f"RL inference complete; full64_evals={int(evaluator.fea_counts['full64'])}, "
+            f"selected_source={selected_source}"
+        )
+    return selected_mask, diagnostics
+
+
+def _local_greedy_polish(
+    mask: np.ndarray,
+    evaluator: Evaluator,
+    config: ProblemConfig,
+    *,
+    max_fea_budget: int = 200,
+    progress: ProgressFn | None = None,
+) -> tuple[np.ndarray, EvalResult, int]:
+    """Greedy 1-cell boundary flip polish used after the RL harvester.
+
+    Iterates boundary voxel flips (add or remove) and accepts any flip that
+    (a) leaves the mask inside the feasibility band (``passed_filters=True``)
+    and (b) strictly reduces ``evaluation.score``. Supports, load and
+    connectivity are enforced via the evaluator's ``_screen_geometry`` pass.
+
+    The per-polish FEA budget is capped at ``max_fea_budget`` so the
+    procedure always terminates within the configured full64 evaluation
+    budget.
+    """
+    current = np.ascontiguousarray(mask, dtype=np.uint8).copy()
+    current_eval = evaluator.evaluate(current, "full64")
+    fea_used = 0
+    if not bool(getattr(current_eval, "passed_filters", False)):
+        return current, current_eval, fea_used
+    width = max(1, int(config.frontier_width))
+    pass_index = 0
+    while fea_used < max_fea_budget:
+        improved = False
+        coords = boundary_patch_coordinates(current, patch_size=1, width=width)
+        for row, col in coords:
+            if fea_used >= max_fea_budget:
+                break
+            candidate = current.copy()
+            candidate[row, col] = 0 if candidate[row, col] else 1
+            # Protect supports/load (same invariants as the env and evaluator).
+            candidate[0, 0] = 1
+            candidate[0, -1] = 1
+            candidate[-1, -1] = 1
+            cand_eval = evaluator.evaluate(candidate, "full64")
+            fea_used += 1
+            if not bool(getattr(cand_eval, "passed_filters", False)):
+                continue
+            if float(cand_eval.score) + 1e-9 < float(current_eval.score):
+                current = candidate
+                current_eval = cand_eval
+                improved = True
+                break
+        pass_index += 1
+        if not improved:
+            break
+    if progress:
+        progress(
+            f"polish done: passes={pass_index}, fea_used={fea_used}/{max_fea_budget}, "
+            f"final_score={float(current_eval.score):.4f}, "
+            f"volume={float(current_eval.volume_fraction):.3f}"
+        )
+    return current, current_eval, fea_used
+
+
+def _rollout_inference(
+    model: Any,
+    monitor_env: Any,
+    evaluator: Evaluator,
+    config: ProblemConfig,
+    *,
+    harvested_best_mask: np.ndarray | None = None,
+    harvested_best_eval: EvalResult | None = None,
+    progress: ProgressFn | None = None,
+) -> tuple[np.ndarray, str, dict[str, Any]]:
+    """Phase-5 inference protocol.
+
+    1. If the training callback harvested a feasible ``best_global_mask``,
+       use it as the env seed so that every rollout refines from the best
+       known design (instead of drifting away from a full-solid warm start).
+    2. Run one deterministic rollout + (N-1) stochastic rollouts from that
+       seed.
+    3. Local greedy polish with a 1-cell boundary flip loop (<=200 FEA) on
+       the best mask observed across the harvester + rollouts.
+
+    Returns ``(final_mask, selected_source, diagnostics_scores)`` with
+    ``selected_source in {harvested_best, harvested_plus_policy,
+    harvested_plus_polish, deterministic_rollout, stochastic_rollout_N}``
+    so summaries can show where improvements came from.
+    """
+    base_env = monitor_env.unwrapped
+    total_rollouts = max(1, int(config.rl_inference_rollouts))
+    diagnostics: dict[str, Any] = {}
+
+    if harvested_best_mask is not None and hasattr(base_env, "set_seed_mask"):
+        try:
+            base_env.set_seed_mask(np.ascontiguousarray(harvested_best_mask, dtype=np.uint8))
+            diagnostics["inference_seed_source"] = "harvested_best"
+            if progress:
+                progress(
+                    "inference seed set to harvested_best "
+                    f"(volume={float(harvested_best_eval.volume_fraction):.3f}, "
+                    f"score={float(harvested_best_eval.score):.4f})"
+                    if harvested_best_eval is not None
+                    else "inference seed set to harvested_best"
+                )
+        except Exception as exc:
+            if progress:
+                progress(f"failed to set harvested seed for inference ({exc}); using training seed.")
+            diagnostics["inference_seed_source"] = "training_seed"
+    else:
+        diagnostics["inference_seed_source"] = "training_seed"
+
+    best_mask: np.ndarray | None = None
+    best_eval: EvalResult | None = None
+    best_source = "deterministic_rollout"
+
+    if harvested_best_mask is not None and harvested_best_eval is not None:
+        best_mask = np.ascontiguousarray(harvested_best_mask, dtype=np.uint8).copy()
+        best_eval = harvested_best_eval
+        best_source = "harvested_best"
+        diagnostics["harvested_best_score"] = float(harvested_best_eval.score)
+
+    for rollout_idx in range(total_rollouts):
+        deterministic = rollout_idx == 0
+        observation, _ = monitor_env.reset()
+        done = False
+        while not done:
+            action_masks = base_env.action_masks()
+            action, _ = model.predict(
+                observation,
+                action_masks=action_masks,
+                deterministic=deterministic,
+            )
+            observation, _reward, terminated, truncated, _info = monitor_env.step(action)
+            done = bool(terminated or truncated)
+        rollout_mask = base_env.render()
+        rollout_eval = evaluator.evaluate(rollout_mask, "full64")
+        source_label = (
+            "deterministic_rollout" if deterministic else f"stochastic_rollout_{rollout_idx}"
+        )
+        if progress:
+            progress(
+                f"inference rollout {rollout_idx + 1}/{total_rollouts} ({source_label}): "
+                f"score={rollout_eval.score:.4f}, passed_filters={rollout_eval.passed_filters}, "
+                f"volume={rollout_eval.volume_fraction:.3f}"
+            )
+        if best_eval is None or _is_better_result(rollout_eval, best_eval):
+            best_mask = rollout_mask.copy()
+            best_eval = rollout_eval
+            best_source = (
+                "harvested_plus_policy" if harvested_best_mask is not None else source_label
+            )
+
+    assert best_mask is not None and best_eval is not None
+    diagnostics["post_rollout_best_score"] = float(best_eval.score)
+    diagnostics["post_rollout_source"] = best_source
+
+    # Local greedy polish over boundary flips, capped to keep within the
+    # full64 evaluation budget.
+    polish_budget = min(200, max(0, int(config.max_rl_full_evals) - int(evaluator.fea_counts["full64"])))
+    if polish_budget > 0 and bool(getattr(best_eval, "passed_filters", False)):
+        polished_mask, polished_eval, fea_used = _local_greedy_polish(
+            best_mask,
+            evaluator,
+            config,
+            max_fea_budget=polish_budget,
+            progress=progress,
+        )
+        diagnostics["polish_fea_used"] = int(fea_used)
+        diagnostics["polish_score"] = float(polished_eval.score)
+        if _is_better_result(polished_eval, best_eval):
+            best_mask = polished_mask
+            best_eval = polished_eval
+            best_source = "harvested_plus_polish"
+    else:
+        diagnostics["polish_fea_used"] = 0
+
+    diagnostics["selected_source"] = best_source
+    diagnostics["selected_score"] = float(best_eval.score)
+    return best_mask, best_source, diagnostics
+
+
+def _maybe_run_direct_rl(
+    seed_mask: np.ndarray,
+    config: ProblemConfig,
+    evaluator: Evaluator,
+    warnings: list[str],
+    progress: ProgressFn | None = None,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    if not config.enable_rl:
+        warnings.append("RL refinement disabled by config; returning direct-search best seed.")
+        if progress:
+            progress("RL refinement disabled by config; returning direct-search best seed.")
+        return seed_mask, {"skipped": True, "reason": "rl_disabled"}
+    try:  # pragma: no cover - optional dependency
+        os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+        import torch
+        from stable_baselines3.common.callbacks import BaseCallback
+        from sb3_contrib import MaskablePPO
+        from stable_baselines3.common.monitor import Monitor
+    except Exception:
+        warnings.append("MaskablePPO dependencies are unavailable; returning direct-search best seed.")
+        if progress:
+            progress("MaskablePPO dependencies are unavailable; returning direct-search best seed.")
+        return seed_mask, {"skipped": True, "reason": "missing_maskableppo_dependencies"}
+
+    from .refine_env import default_policy_kwargs, make_direct64_refine_env
+
+    device = _resolve_rl_device(config, progress=progress, torch_module=torch)
+    if progress:
+        progress(
+            f"starting direct64 RL refinement: total_timesteps={config.rl_total_timesteps}, "
+            f"max_rl_full_evals={config.max_rl_full_evals}, device={device}"
+        )
+    env = make_direct64_refine_env(seed_mask, config, evaluator=evaluator)
+    monitored = Monitor(env)
+    base_env = monitored.unwrapped
+    degeneracy_monitor = DirectRLDegeneracyMonitor(episode_window=config.rl_degenerate_episode_window)
+
+    class _DirectRLEarlyExitCallback(BaseCallback):
+        def _on_step(self) -> bool:
+            infos = self.locals.get("infos")
+            if not isinstance(infos, list):
+                return True
+            for info in infos:
+                if isinstance(info, dict) and degeneracy_monitor.observe_episode(info):
+                    if progress:
+                        progress(
+                            "direct64 RL early exit triggered: "
+                            f"{degeneracy_monitor.reason or 'degenerate_policy_detected'}"
+                        )
+                    return False
+            return True
+
+    callback = _DirectRLEarlyExitCallback()
+    model = MaskablePPO(
+        "CnnPolicy",
+        monitored,
+        policy_kwargs=default_policy_kwargs(),
+        verbose=1 if progress else 0,
+        seed=config.random_seed,
+        device=device,
+    )
+    model.learn(total_timesteps=config.rl_total_timesteps, callback=callback)
+    if degeneracy_monitor.stopped_early and degeneracy_monitor.reason:
+        warnings.append(f"direct64 RL early exit: {degeneracy_monitor.reason}")
+    if progress:
+        progress("direct64 RL training completed; running deterministic inference rollout.")
+
+    observation, _ = monitored.reset()
+    done = False
+    last_info: dict[str, Any] = {}
+    while not done:
+        action_masks = base_env.action_masks()
+        action, _ = model.predict(observation, action_masks=action_masks, deterministic=True)
+        observation, _reward, terminated, truncated, last_info = monitored.step(action)
+        done = bool(terminated or truncated)
+    diagnostics = base_env.rl_diagnostics() if hasattr(base_env, "rl_diagnostics") else {}
+    diagnostics = {
+        **diagnostics,
+        "device": device,
+        "rl_total_timesteps": int(config.rl_total_timesteps),
+        "training_monitor": degeneracy_monitor.snapshot(),
+        "last_info": last_info,
+    }
+    if progress:
+        progress(
+            "direct64 RL inference rollout completed; "
+            f"full64_evals={int(evaluator.fea_counts['full64'])}, "
+            f"boundary_candidates={diagnostics.get('boundary_candidate_count', 0)}, "
+            f"hotspot_candidates={diagnostics.get('hotspot_candidate_count', 0)}, "
+            f"union_candidates={diagnostics.get('union_candidate_count', 0)}, "
+            f"accepted_removals={diagnostics.get('accepted_removals', 0)}, "
+            f"rejected_invalid={diagnostics.get('rejected_invalid_removals', 0)}, "
+            f"rejected_non_improving={diagnostics.get('rejected_non_improving_removals', 0)}"
+        )
+    return base_env.render(), diagnostics
+
+
+def run_multistage_search(config: ProblemConfig, *, progress: ProgressFn | None = None) -> StageArtifacts:
+    start = time.time()
+    deadline = start + config.runtime_budget_hours * 3600.0 if config.has_runtime_budget() else None
+    evaluator = Evaluator(config)
+    warnings: list[str] = []
+    stage_resolutions = infer_stage_resolutions(config.resolution)
+    if progress:
+        progress(
+            f"pipeline started: final_resolution={config.resolution}, stages={stage_resolutions}, "
+            f"runtime_budget_hours={config.runtime_budget_hours}, enable_rl={config.enable_rl}, "
+            f"rl_device={config.rl_device}"
+        )
+
+    coarse_candidates = run_coarse_search(
+        evaluator,
+        config,
+        resolution=stage_resolutions[0],
+        top_k=max(config.stage32_top_k, 8),
+        deadline=deadline,
+        progress=progress,
+    )
+    if not coarse_candidates:
+        raise RuntimeError("Coarse search did not produce any valid candidates.")
+
+    coarse16 = coarse_candidates[0].mask
+    metrics: dict[str, dict[str, Any]] = {
+        "coarse16": _result_to_dict(coarse_candidates[0].evaluation),
+    }
+    if progress:
+        progress(
+            f"coarse16 completed: best_score={coarse_candidates[0].evaluation.score:.4f}, "
+            f"proxy16_evals={int(evaluator.fea_counts['proxy16'])}"
+        )
+
+    refined32: np.ndarray | None = None
+    refined64: np.ndarray | None = None
+
+    if len(stage_resolutions) >= 2:
+        second_resolution = stage_resolutions[1]
+        if progress:
+            progress(
+                f"starting stage {second_resolution} boundary refinement with "
+                f"{min(len(coarse_candidates), config.stage32_top_k)} promoted seeds"
+            )
+        seeds32 = [upsample_binary_mask(candidate.mask, second_resolution) for candidate in coarse_candidates[: config.stage32_top_k]]
+        stage32_candidates = boundary_local_search(
+            seeds32,
+            evaluator,
+            config,
+            resolution=second_resolution,
+            fidelity="proxy32" if second_resolution >= 32 else "proxy16",
+            patch_sizes=(2,),
+            top_k=max(config.stage64_top_k, 2),
+            steps=config.local_search_steps32,
+            deadline=deadline,
+            progress=progress,
+        )
+        refined32 = stage32_candidates[0].mask
+        metrics["refined32"] = _result_to_dict(stage32_candidates[0].evaluation)
+        if progress:
+            progress(
+                f"stage {second_resolution} completed: best_score={stage32_candidates[0].evaluation.score:.4f}, "
+                f"proxy32_evals={int(evaluator.fea_counts['proxy32'])}"
+            )
+    else:
+        stage32_candidates = coarse_candidates[: config.stage64_top_k]
+
+    if config.resolution >= 64:
+#     if config.resolution >= 128:
+        seeds64_source = stage32_candidates[: config.stage64_top_k]
+        if progress:
+            progress(
+                f"starting stage {config.resolution} boundary refinement with "
+                f"{len(seeds64_source)} promoted seeds"
+            )
+        seeds64 = [upsample_binary_mask(candidate.mask, config.resolution) for candidate in seeds64_source]
+        stage64_candidates = boundary_local_search(
+            seeds64,
+            evaluator,
+            config,
+            resolution=config.resolution,
+            fidelity="full64",
+            patch_sizes=(2, 1),
+            top_k=1,
+            steps=config.local_search_steps64,
+            deadline=deadline,
+            progress=progress,
+        )
+        stage64_seed = stage64_candidates[0].mask
+        stage64_seed_eval = stage64_candidates[0].evaluation
+        if progress:
+            progress(
+                f"stage {config.resolution} seed completed: best_score={stage64_seed_eval.score:.4f}, "
+                f"full64_evals={int(evaluator.fea_counts['full64'])}"
+            )
+        rl_candidate, rl_diagnostics = _maybe_run_rl(
+            stage64_seed,
+            config,
+            evaluator,
+            warnings,
+            seed_evaluation=stage64_seed_eval,
+            progress=progress,
+        )
+        rl_candidate_eval = evaluator.evaluate(rl_candidate, "full64")
+        refined64, refined64_eval, selection = _select_monotonic_refinement(
+            stage64_seed,
+            stage64_seed_eval,
+            rl_candidate,
+            rl_candidate_eval,
+        )
+        metrics["refined64_seed"] = _result_to_dict(stage64_seed_eval)
+        metrics["refined64_rl_candidate"] = _result_to_dict(rl_candidate_eval)
+        metrics["refined64_selection"] = selection
+        metrics["refined64"] = _result_to_dict(refined64_eval)
+        if rl_diagnostics:
+            metrics["rl_training"] = rl_diagnostics
+        if progress:
+            progress(
+                f"final refined64 evaluated: score={metrics['refined64']['score']:.4f}, "
+                f"accepted_rl={selection['accepted']}, "
+                f"full64_evals={int(evaluator.fea_counts['full64'])}, cache_hits={evaluator.cache_hits}"
+            )
+    elif refined32 is not None:
+        refined64 = refined32
+
+    runtime = time.time() - start
+    if progress:
+        progress(
+            f"pipeline finished: runtime_sec={runtime:.2f}, "
+            f"proxy16_evals={int(evaluator.fea_counts['proxy16'])}, "
+            f"proxy32_evals={int(evaluator.fea_counts['proxy32'])}, "
+            f"full64_evals={int(evaluator.fea_counts['full64'])}, cache_hits={evaluator.cache_hits}"
+        )
+    return StageArtifacts(
+        coarse16=coarse16,
+        refined32=refined32,
+        refined64=refined64,
+        metrics=metrics,
+        fea_counts=evaluation_snapshot(evaluator),
+        runtime=runtime,
+        warnings=warnings,
+    )
+
+
+def run_direct64_exact_search(config: ProblemConfig, *, progress: ProgressFn | None = None) -> DirectSearchArtifacts:
+    direct_config = dataclasses.replace(config, pipeline_mode="direct64_exact")
+    artifacts = run_direct_search_core(direct_config, progress=progress)
+    if not direct_config.enable_rl:
+        artifacts.metrics["final64"] = dict(artifacts.metrics["best64"])
+        artifacts.metrics["rl_refined64_diagnostics"] = {}
+        artifacts.metrics["final64_diagnostics"] = {}
+        artifacts.metrics["rl_selection"] = {
+            "accepted": False,
+            "reason": "rl_disabled",
+            "incumbent_score": float(artifacts.metrics["best64"]["score"]),
+            "candidate_score": float(artifacts.metrics["best64"]["score"]),
+            "selected_score": float(artifacts.metrics["best64"]["score"]),
+            "candidate_valid": bool(artifacts.metrics["best64"]["passed_filters"]),
+            "incumbent_valid": bool(artifacts.metrics["best64"]["passed_filters"]),
+            "diagnostics": {},
+        }
+        artifacts.metrics["rl_trials"] = []
+        return artifacts
+
+    rl_start = time.time()
+    rl_config = dataclasses.replace(direct_config, max_full_evals=max(direct_config.max_rl_full_evals, 1_000_000))
+    evaluator = Evaluator(rl_config)
+    warnings = list(artifacts.warnings)
+    global_best_mask = artifacts.best64.copy()
+    global_best_eval = evaluator.evaluate(global_best_mask, "full64")
+    trial_results: list[dict[str, Any]] = []
+    best_rl_candidate_mask = global_best_mask.copy()
+    best_rl_candidate_eval: EvalResult | None = None
+
+    rl_seeds = _build_rl_seed_list(artifacts.best64, artifacts.archive_best, direct_config.rl_archive_top_k)
+    if progress:
+        progress(
+            f"starting direct64 multi-start RL refinement from {len(rl_seeds)} archive seeds "
+            f"(requested_top_k={direct_config.rl_archive_top_k})"
+        )
+
+    overall_selection = {
+        "accepted": False,
+        "reason": "no_improving_rl_candidate",
+        "incumbent_score": float(global_best_eval.score),
+        "candidate_score": float(global_best_eval.score),
+        "selected_score": float(global_best_eval.score),
+        "candidate_valid": bool(global_best_eval.passed_filters),
+        "incumbent_valid": bool(global_best_eval.passed_filters),
+        "seed_index": 0,
+        "seed_count": len(rl_seeds),
+        "diagnostics": {},
+    }
+
+    for seed_index, seed_mask in enumerate(rl_seeds, start=1):
+        trial_config = dataclasses.replace(rl_config, random_seed=direct_config.random_seed + seed_index - 1)
+        seed_eval = evaluator.evaluate(seed_mask, "full64")
+        if progress:
+            progress(
+                f"direct64 RL trial {seed_index}/{len(rl_seeds)}: seed_score={seed_eval.score:.4f}, "
+                f"seed_valid={seed_eval.passed_filters}"
+            )
+        rl_candidate, rl_diagnostics = _maybe_run_direct_rl(seed_mask, trial_config, evaluator, warnings, progress=progress)
+        rl_eval = evaluator.evaluate(rl_candidate, "full64")
+        selected_mask, selected_eval, selection = _select_monotonic_refinement(
+            seed_mask,
+            seed_eval,
+            rl_candidate,
+            rl_eval,
+        )
+        selection["seed_index"] = seed_index
+        selection["seed_count"] = len(rl_seeds)
+        trial_results.append(
+            {
+                "seed_index": seed_index,
+                "seed_score": float(seed_eval.score),
+                "seed_valid": bool(seed_eval.passed_filters),
+                "candidate": _result_to_dict(rl_eval),
+                "selection": selection,
+                "selected": _result_to_dict(selected_eval),
+                "diagnostics": rl_diagnostics,
+            }
+        )
+        if best_rl_candidate_eval is None or _is_better_result(rl_eval, best_rl_candidate_eval):
+            best_rl_candidate_mask = rl_candidate.copy()
+            best_rl_candidate_eval = rl_eval
+        if _is_better_result(selected_eval, global_best_eval):
+            global_best_mask = selected_mask.copy()
+            global_best_eval = selected_eval
+            overall_selection = {**selection, "diagnostics": rl_diagnostics}
+        artifacts.search_trace.append(
+            {
+                "event": "rl_refinement_trial",
+                "seed_index": seed_index,
+                "seed_score": float(seed_eval.score),
+                "candidate_score": float(rl_eval.score),
+                "accepted": bool(selection["accepted"]),
+                "selected_score": float(selected_eval.score),
+                "diagnostics": rl_diagnostics,
+            }
+        )
+        if progress:
+            progress(
+                f"direct64 RL trial {seed_index}/{len(rl_seeds)} selection: accepted={selection['accepted']}, "
+                f"reason={selection['reason']}, selected_score={selected_eval.score:.4f}, "
+                f"accepted_removals={rl_diagnostics.get('accepted_removals', 0)}, "
+                f"boundary_candidates={rl_diagnostics.get('boundary_candidate_count', 0)}, "
+                f"hotspot_candidates={rl_diagnostics.get('hotspot_candidate_count', 0)}"
+            )
+
+    artifacts.best64 = global_best_mask
+    artifacts.metrics["rl_refined64"] = _result_to_dict(best_rl_candidate_eval or global_best_eval)
+    best_trial_diagnostics = {}
+    if trial_results:
+        best_trial_diagnostics = min(
+            trial_results,
+            key=lambda trial: (
+                0.0 if trial["candidate"]["passed_filters"] else 1.0,
+                float(trial["candidate"]["score"]),
+            ),
+        )["diagnostics"]
+    artifacts.metrics["rl_refined64_diagnostics"] = best_trial_diagnostics
+    artifacts.metrics["rl_trials"] = trial_results
+    artifacts.metrics["rl_selection"] = overall_selection
+    artifacts.metrics["final64"] = _result_to_dict(global_best_eval)
+    artifacts.metrics["final64_diagnostics"] = dict(best_trial_diagnostics if overall_selection["accepted"] else {})
+    rl_counts = evaluation_snapshot(evaluator)
+    artifacts.fea_counts = {
+        "proxy16": float(artifacts.fea_counts.get("proxy16", 0.0) + rl_counts.get("proxy16", 0.0)),
+        "proxy32": float(artifacts.fea_counts.get("proxy32", 0.0) + rl_counts.get("proxy32", 0.0)),
+        "full64": float(artifacts.fea_counts.get("full64", 0.0) + rl_counts.get("full64", 0.0)),
+        "cache_hits": float(artifacts.fea_counts.get("cache_hits", 0.0) + rl_counts.get("cache_hits", 0.0)),
+        "cache_size": float(max(artifacts.fea_counts.get("cache_size", 0.0), rl_counts.get("cache_size", 0.0))),
+    }
+    artifacts.warnings = warnings
+    artifacts.runtime += time.time() - rl_start
+    artifacts.search_trace.append(
+        {
+            "event": "rl_refinement",
+            "full64_evals": int(artifacts.fea_counts["full64"]),
+            "seed_count": len(rl_seeds),
+            "accepted": bool(overall_selection["accepted"]),
+            "best_score": float(global_best_eval.score),
+            "best_volume": float(global_best_eval.volume_fraction),
+            "best_islands": int(global_best_eval.islands),
+            "candidate_score": float((best_rl_candidate_eval or global_best_eval).score),
+        }
+    )
+    if progress:
+        progress(
+            f"direct64 RL selection: accepted={overall_selection['accepted']}, "
+            f"reason={overall_selection['reason']}, final_score={global_best_eval.score:.4f}"
+        )
+    return artifacts
+
+
+def _build_lr_schedule(config: ProblemConfig) -> Any:
+    """Return a learning-rate spec suitable for MaskablePPO(..., learning_rate=...).
+
+    Cosine schedule: lr(p_remaining=1) = rl_lr_initial,
+                     lr(p_remaining=0) = rl_lr_final,
+                     monotone cosine interpolation in between.
+
+    MaskablePPO calls ``learning_rate(progress_remaining)`` where
+    ``progress_remaining`` goes from 1.0 at start to 0.0 at the end of training,
+    so we translate that to the usual 0..1 progress coordinate.
+    """
+    lr_initial = float(config.rl_lr_initial)
+    lr_final = float(config.rl_lr_final)
+    if config.rl_lr_schedule == "constant" or abs(lr_initial - lr_final) < 1e-12:
+        return lr_initial
+
+    def _cosine(progress_remaining: float) -> float:
+        progress_remaining = float(max(0.0, min(1.0, progress_remaining)))
+        progress = 1.0 - progress_remaining
+        return lr_final + 0.5 * (lr_initial - lr_final) * (1.0 + math.cos(math.pi * progress))
+
+    return _cosine
+
+
+def _schedule_hparams_for_step(config: ProblemConfig, num_timesteps: int) -> tuple[float, float | None]:
+    """Linear schedule for ent_coef and target_kl from rollout 0 to the last
+    rollout. Returns the (ent_coef, target_kl) pair that PPO should use for
+    the upcoming rollout; ``target_kl`` may be ``None`` to disable the
+    early-stopping check."""
+    total = max(1, int(config.rl_total_timesteps))
+    progress = float(max(0.0, min(1.0, float(num_timesteps) / float(total))))
+    ent_i = float(config.rl_ent_coef)
+    ent_f = float(config.rl_ent_coef_final)
+    ent_coef = ent_f + (ent_i - ent_f) * (1.0 - progress)
+    kl_i = float(config.rl_target_kl)
+    kl_f = float(config.rl_target_kl_final)
+    if kl_i <= 0.0 and kl_f <= 0.0:
+        target_kl: float | None = None
+    else:
+        target_kl = max(kl_f + (kl_i - kl_f) * (1.0 - progress), 1e-6)
+    return float(ent_coef), target_kl
+
+
+def _seed_full_solid(config: ProblemConfig) -> np.ndarray:
+    return np.ones((int(config.resolution), int(config.resolution)), dtype=np.uint8)
+
+
+def _seed_random_near_target(config: ProblemConfig, evaluator: Evaluator) -> np.ndarray:
+    """Build a warm-start mask with volume close to the upper band and
+    guaranteed support/load contact plus single connected component.
+
+    Strategy: start from full-solid and iteratively remove random non-boundary
+    cells, skipping any removal that would disconnect the mask. This produces
+    a random topology whose volume sits near ``target + slack_upper`` after
+    ``target_cells`` successful removals (so the agent does not have to spend
+    ~N/2 initial steps just reaching the band).
+    """
+    res = int(config.resolution)
+    setup = evaluator.setups[res]
+    support_load = np.clip(np.asarray(setup.support_mask) + np.asarray(setup.load_mask), 0, 1).astype(np.uint8)
+    target_vol = float(np.clip(
+        float(config.volume_target) + float(config.rl_volume_slack_upper),
+        float(config.volume_target),
+        1.0,
+    ))
+    target_cells = int(round(target_vol * res * res))
+
+    mask = np.ones((res, res), dtype=np.uint8)
+    immutable = support_load.astype(bool)
+    rng = np.random.default_rng(int(config.random_seed))
+    removable = [
+        (r, c)
+        for r in range(res)
+        for c in range(res)
+        if not immutable[r, c]
+    ]
+    rng.shuffle(removable)
+    for r, c in removable:
+        if int(mask.sum()) <= target_cells:
+            break
+        mask[r, c] = 0
+        retained = retain_components_touching_region(mask, support_load)
+        # Require the mask to remain a single connected component that still
+        # covers every support/load cell. Otherwise PPO would need extra steps
+        # to bridge disconnected chunks before becoming feasible.
+        if int(retained.sum()) < int(mask.sum()) or int(count_islands(retained)) > 1:
+            mask[r, c] = 1
+        else:
+            mask = retained
+    return np.ascontiguousarray(mask, dtype=np.uint8)
+
+
+def _build_rl_seed(config: ProblemConfig, evaluator: Evaluator) -> tuple[np.ndarray, str]:
+    strategy = getattr(config, "rl_seed_strategy", "full_solid")
+    if strategy == "random_near_target":
+        return _seed_random_near_target(config, evaluator), "random_near_target"
+    return _seed_full_solid(config), "full_solid"
+
+
+def run_rl_only_exact_search(config: ProblemConfig, *, progress: ProgressFn | None = None) -> DirectSearchArtifacts:
+    rl_only_config = dataclasses.replace(
+        config,
+        pipeline_mode="rl_only_exact",
+        direct_population=max(1, config.direct_population),
+    )
+    start = time.time()
+    evaluator = Evaluator(rl_only_config)
+    warnings: list[str] = []
+    seed_mask, seed_type = _build_rl_seed(rl_only_config, evaluator)
+    seed_eval = evaluator.evaluate(seed_mask, "full64")
+    search_trace: list[dict[str, Any]] = [
+        {
+            "event": "rl_only_seed",
+            "seed_type": seed_type,
+            "score": float(seed_eval.score),
+            "volume": float(seed_eval.volume_fraction),
+            "passed_filters": bool(seed_eval.passed_filters),
+            "invalid_reason": seed_eval.invalid_reason,
+        }
+    ]
+    if progress:
+        progress(
+            f"rl-only exact search started: resolution={rl_only_config.resolution}, "
+            f"enable_rl={rl_only_config.enable_rl}, seed_score={seed_eval.score:.4f}"
+        )
+
+    rl_diagnostics: dict[str, Any] = {}
+    if rl_only_config.enable_rl:
+        rl_candidate, rl_diagnostics = _maybe_run_rl(
+            seed_mask,
+            rl_only_config,
+            evaluator,
+            warnings,
+            seed_evaluation=seed_eval,
+            progress=progress,
+        )
+        rl_candidate_eval = evaluator.evaluate(rl_candidate, "full64")
+    else:
+        warnings.append("RL-only pipeline launched with RL disabled; returning full-solid seed.")
+        if progress:
+            progress("RL-only pipeline launched with RL disabled; returning full-solid seed.")
+        rl_candidate = seed_mask.copy()
+        rl_candidate_eval = seed_eval
+
+    final_mask, final_eval, selection = _select_monotonic_refinement(
+        seed_mask,
+        seed_eval,
+        rl_candidate,
+        rl_candidate_eval,
+    )
+    runtime = time.time() - start
+    search_trace.append(
+        {
+            "event": "rl_only_refinement",
+            "seed_score": float(seed_eval.score),
+            "candidate_score": float(rl_candidate_eval.score),
+            "accepted": bool(selection["accepted"]),
+            "final_score": float(final_eval.score),
+        }
+    )
+    metrics: dict[str, dict[str, Any]] = {
+        "seed": _result_to_dict(seed_eval),
+        "rl_candidate": _result_to_dict(rl_candidate_eval),
+        "rl_selection": selection,
+        "final": _result_to_dict(final_eval),
+    }
+    if rl_diagnostics:
+        metrics["rl_training"] = rl_diagnostics
+    if progress:
+        progress(
+            f"rl-only exact search finished: runtime_sec={runtime:.2f}, "
+            f"accepted_rl={selection['accepted']}, final_score={final_eval.score:.4f}, "
+            f"full64_evals={int(evaluator.fea_counts['full64'])}, cache_hits={evaluator.cache_hits}"
+        )
+    return DirectSearchArtifacts(
+        initial_population=[seed_mask.copy()],
+        archive_best=[seed_mask.copy()],
+        best64=final_mask.copy(),
+        metrics=metrics,
+        fea_counts=evaluation_snapshot(evaluator),
+        runtime=runtime,
+        warnings=warnings,
+        search_trace=search_trace,
+    )
+
+
+def run_search(config: ProblemConfig, *, progress: ProgressFn | None = None) -> StageArtifacts | DirectSearchArtifacts:
+    if config.pipeline_mode == "direct64_exact":
+        return run_direct64_exact_search(config, progress=progress)
+    if config.pipeline_mode == "rl_only_exact":
+        return run_rl_only_exact_search(config, progress=progress)
+    return run_multistage_search(config, progress=progress)
