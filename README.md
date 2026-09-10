@@ -2,11 +2,13 @@
 
 Gigala is an open-source AI-native software for intelligent engineering design of physical structures — combining finite element analysis with reinforcement learning and genetic algorithms to produce optimal designs.
 
-Gigala is, to the best of my knowledge, one of the earliest implementations of RL-based topology optimization — with development starting in 2018, predating most academic publications in this space. The framework has since grown into a research platform with clear applications in structural mechanics, offshore engineering, and space construction, and this work was cited in Nature Portfolio (2026).
+Gigala is, to the best of my knowledge, one of the earliest implementations of RL-based topology optimization — with development starting in 2018, predating most academic publications in this space. The framework has since grown into a research platform with clear applications in structural mechanics, offshore engineering, and space construction. 
+
+This research has been cited in Nature Portfolio (2026).
 
 Reinforcement learning brings a fundamentally different approach to topology optimization: global, gradient-free, non-convex, and generalizable — capable of handling stochastic loading and practical engineering constraints. Its sequential nature makes it naturally extensible to manufacturing process planning (agent-technologist) and autonomous assembly of complex structures (agent-builder), including lunar/subsea base construction under dynamic loading.
 
-**Current milestone:** pure DRL is somewhere in between 15x15 and 20x20 (effective 40×40 via symmetry); hybrid GA-RL outperforming pure DRL at 32×32 resolution (effective 64×64 via symmetry exploitation), and has reached a pre-industrial grade where the software can design small elements (like pins, hinges, brackets, etc) on a typical PC. Target applications include autonomous structural assembly for lunar base programs, offshore infrastructure, and complex mechanical systems.
+**Current milestone:** pure DRL is somewhere in between 15x15 and 20x20 (effective 40×40 via symmetry); hybrid GA-RL outperforming pure DRL at 32×32 resolution (effective 64×64 via symmetry exploitation), and has reached a pre-industrial grade where the software can design small elements (like pins, hinges, brackets, etc) on a typical PC. Target applications include autonomous structural assembly for lunar base programs, offshore infrastructure, and complex mechanical systems design.
 
 Modules:
 * Topology optimization (structural mechanics)
