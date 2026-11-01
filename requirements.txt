@@ -1,0 +1,12 @@
+# Minimal dependencies for the modular gen_rl pipeline, CLI launcher, and notebook.
+# Python 3.9+ is supported.
+
+numpy>=1.23
+scipy>=1.10
+matplotlib>=3.7
+
+# RL stack used by the optional MaskablePPO refinement stage.
+gymnasium>=0.29
+torch>=2.1
+stable-baselines3>=2.3
+sb3-contrib>=2.3
