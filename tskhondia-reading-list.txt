@@ -72,3 +72,5 @@ It took me just 9 years (from mid 2017 to mid 2026) to read this list. Enjoy :)
 •Guide to competitive programming - 2020 + https://cses.fi/problemset/
 •Modern Robotics: Mechanics, Planning, and Control. Kevin M. Lynch and Frank C. Park
 •Convex Optimization, Stephen Boyd & Lieven Vandenberghe
+•Marine Robot Autonomy. Seto
+•Programming Massively Parallel Processors by Hwu, Kirk, and El Hajj
