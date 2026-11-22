@@ -1,0 +1,134 @@
+[
+  {
+    "step": 0,
+    "volume_fraction": 1.0,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 1,
+    "volume_fraction": 0.98,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 2,
+    "volume_fraction": 0.96,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 3,
+    "volume_fraction": 0.94,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 4,
+    "volume_fraction": 0.92,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 5,
+    "volume_fraction": 0.9,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 6,
+    "volume_fraction": 0.88,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 7,
+    "volume_fraction": 0.86,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 8,
+    "volume_fraction": 0.84,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 9,
+    "volume_fraction": 0.82,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 10,
+    "volume_fraction": 0.8,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 11,
+    "volume_fraction": 0.78,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 12,
+    "volume_fraction": 0.76,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 13,
+    "volume_fraction": 0.74,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 14,
+    "volume_fraction": 0.72,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 15,
+    "volume_fraction": 0.7,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 16,
+    "volume_fraction": 0.68,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 17,
+    "volume_fraction": 0.66,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 18,
+    "volume_fraction": 0.64,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 19,
+    "volume_fraction": 0.62,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 20,
+    "volume_fraction": 0.6,
+    "score": 1000000000000.0,
+    "passed_filters": false
+  },
+  {
+    "step": 21,
+    "volume_fraction": 0.58,
+    "score": 306.30338402334974,
+    "passed_filters": true
+  }
+]
