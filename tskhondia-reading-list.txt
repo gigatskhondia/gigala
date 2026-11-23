@@ -75,3 +75,7 @@ It took me just 9 years (from mid 2017 to mid 2026) to read this list. Enjoy :)
 •Marine Robot Autonomy. Seto
 •Non-linear Finite Element Analysis of Solids and Structures. Crisfield
 •Computational inelasticity. Simo, Juan C., and Thomas JR Hughes.
+•Iterative Methods for Sparse Linear Systems. Saad
+•Nodal Discontinuous Galerkin Methods. Hesthaven and Warburton
+•Optimizing Expectations: From Deep Reinforcement Learning to Stochastic Computation Graphs. John Schulman
+•The CMA Evolution Strategy: A Tutorial. Nikolaus Hansen
