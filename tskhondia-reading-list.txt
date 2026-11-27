@@ -75,3 +75,4 @@ It took me just 9 years (from mid 2017 to mid 2026) to read this list. Enjoy :)
 •Marine Robot Autonomy. Seto
 •Optimizing Expectations: From Deep Reinforcement Learning to Stochastic Computation Graphs. John Schulman
 •The CMA Evolution Strategy: A Tutorial. Nikolaus Hansen
+•Non-linear Finite Element Analysis of Solids and Structures. Vol.2. Crisfield
