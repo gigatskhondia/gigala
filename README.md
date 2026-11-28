@@ -10,6 +10,8 @@ Reinforcement learning brings a fundamentally different approach to topology opt
 
 **Current milestone:** pure DRL is somewhere around 20x20 (effective 40×40 via symmetry); hybrid GA-RL outperforming pure DRL at around 44x44 resolution (effective 88×88 via symmetry exploitation), and has reached a pre-industrial grade where the software can design small elements (like pins, hinges, brackets, etc) on a typical PC. Target applications include autonomous structural assembly for lunar base programs and offshore infrastructure, and complex mechanical systems design.
 
+**Benchmarking** Gigala against SIMP shows comparable compliance but considerably longer run times. Gigala's advantage lies in non-convex and non-linear problems, where gradient-based methods struggle. In addition, a trained Gigala policy infers almost instantly, which makes transfer learning to new problems practical. Finally, Gigala produces the structure as a sequence of assembly steps, whereas SIMP yields only the final topology.
+
 Modules:
 * Topology optimization (structural mechanics)
 * Offshore pipelay dynamics → now in [Ocean Intella](https://github.com/gigatskhondia/ocean_intella) 
